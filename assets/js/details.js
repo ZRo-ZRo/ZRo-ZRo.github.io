@@ -27,7 +27,7 @@ function setMeta(selector,value){ const el=$(selector); if(el && value) el.setAt
     $('#arabicTitle').textContent=item.arabic_title || '';
     $('#shortDescription').textContent=item.short_description || '';
     $('#description').textContent=item.description || 'لا توجد تفاصيل إضافية.';
-    $('#views').textContent=fmt((item.views||0)+(!Zero9DB.isDemo?1:0));
+    $('#views').textContent=fmt(item.views);
     $('#downloads').textContent=fmt(item.downloads);
     $('#version').textContent=item.version || '—';
     $('#detailTags').innerHTML=[item.category,item.status,item.version?`الإصدار ${item.version}`:null].filter(Boolean).map(x=>`<span>${esc(x)}</span>`).join('');
@@ -51,22 +51,24 @@ function setMeta(selector,value){ const el=$(selector); if(el && value) el.setAt
         if (Date.now() - last > 86400000) {
           await Zero9DB.incrementView(item.id);
           localStorage.setItem(key, String(Date.now()));
+          $('#views').textContent=fmt(Number(item.views||0)+1);
         }
-      } catch (e) {
-        try { await Zero9DB.incrementView(item.id); } catch (_) {}
-      }
+      } catch (_) {}
     }
 
-    $('#downloadBtn').onclick=async()=>{
+    $('#downloadBtn').onclick=()=>{
       if(!item.download_url || item.download_url==='#'){toast('لم يتم تعيين رابط تحميل حقيقي لهذا التعريب.',true);return;}
-      $('#downloadBtn').disabled=true;
-      try{
-        if(!Zero9DB.isDemo) await Zero9DB.incrementDownload(item.id);
-        window.open(item.download_url,'_blank','noopener,noreferrer');
-        $('#downloads').textContent=fmt(Number(item.downloads||0)+1);
-      }catch(e){
-        window.open(item.download_url,'_blank','noopener,noreferrer');
-      }finally{$('#downloadBtn').disabled=false;}
+
+      // Open synchronously from the user gesture so popup blockers do not reject the download page.
+      const opened = window.open(item.download_url,'_blank','noopener,noreferrer');
+      if(!opened) window.location.href = item.download_url;
+
+      if(!Zero9DB.isDemo){
+        Zero9DB.incrementDownload(item.id).then(()=>{
+          item.downloads=Number(item.downloads||0)+1;
+          $('#downloads').textContent=fmt(item.downloads);
+        }).catch(()=>{});
+      }
     };
 
     $('#shareBtn').onclick=async()=>{
