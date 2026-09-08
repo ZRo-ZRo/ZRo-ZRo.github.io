@@ -29,7 +29,12 @@ create table if not exists public.localizations (
   downloads bigint not null default 0 check (downloads >= 0),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
-  constraint localizations_slug_format check (slug ~ '^[a-z0-9\u0600-\u06ff]+(?:-[a-z0-9\u0600-\u06ff]+)*$'),
+  -- URL-safe: no whitespace or URL-reserved separators. Arabic/Latin Unicode remains supported.
+  constraint localizations_slug_format check (
+    slug !~ '[[:space:]/?#%&=+]' and
+    slug !~ '^-|-$' and
+    slug !~ '--'
+  ),
   constraint localizations_title_len check (char_length(title) between 1 and 180),
   constraint localizations_slug_len check (char_length(slug) between 1 and 180),
   constraint localizations_screenshots_max check (cardinality(screenshots) <= 4)
@@ -76,7 +81,7 @@ grant execute on function public.is_owner() to authenticated;
 alter table public.owner_users enable row level security;
 alter table public.localizations enable row level security;
 
--- Owner table: only an authenticated owner may read it.
+-- Owner table: only an authenticated Owner may read it.
 drop policy if exists "owner_users_select_owner" on public.owner_users;
 create policy "owner_users_select_owner"
 on public.owner_users
@@ -143,7 +148,7 @@ revoke all on function public.increment_localization_downloads(uuid) from public
 grant execute on function public.increment_localization_views(uuid) to anon, authenticated;
 grant execute on function public.increment_localization_downloads(uuid) to anon, authenticated;
 
--- Public media bucket. Upload/delete remains Owner-only through storage RLS.
+-- Public media bucket. Upload/update/delete remains Owner-only through storage RLS.
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
 values (
   'zro-zro-media',
@@ -184,7 +189,8 @@ commit;
 -- ============================================================
 -- OWNER BOOTSTRAP (run only after creating the Owner account)
 -- Replace the UUID below with the user's UUID from Supabase Auth > Users.
--- Example:
+-- Do NOT commit your real Owner UUID back into this public repository.
+--
 -- insert into public.owner_users (user_id)
 -- values ('00000000-0000-0000-0000-000000000000')
 -- on conflict (user_id) do nothing;
