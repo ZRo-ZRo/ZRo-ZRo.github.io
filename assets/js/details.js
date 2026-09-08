@@ -2,6 +2,7 @@ const $ = (s) => document.querySelector(s);
 const fmt = (n) => new Intl.NumberFormat('ar').format(Number(n || 0));
 const esc = (v='') => String(v).replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
 function toast(msg, error=false){ const t=$('#toast'); t.textContent=msg; t.className='toast show'+(error?' error':''); clearTimeout(window.__zt); window.__zt=setTimeout(()=>t.className='toast',2600); }
+function setMeta(selector,value){ const el=$(selector); if(el && value) el.setAttribute('content', value); }
 
 (async function(){
   $('#year').textContent = new Date().getFullYear();
@@ -11,7 +12,15 @@ function toast(msg, error=false){ const t=$('#toast'); t.textContent=msg; t.clas
   try {
     const item = await Zero9DB.getLocalization(id);
     if (!item) { $('#detailsRoot').innerHTML='<section class="section"><div class="container"><div class="empty">التعريب غير موجود.</div></div></section>'; return; }
-    document.title = `${item.title} | ZRo-ZRo`;
+
+    const pageTitle = `${item.title} | ZRo-ZRo`;
+    const pageDescription = item.short_description || `تعريب ${item.title} من مكتبة ZRo-ZRo`;
+    document.title = pageTitle;
+    setMeta('#metaDescription', pageDescription);
+    setMeta('#ogTitle', pageTitle);
+    setMeta('#ogDescription', pageDescription);
+    setMeta('#ogUrl', location.href);
+
     $('#coverBox').classList.remove('skeleton'); $('#coverBox').style.minHeight='0';
     $('#coverBox').innerHTML=`<img src="${esc(item.cover_url || 'assets/demo/cover-1.svg')}" alt="غلاف ${esc(item.title)}" fetchpriority="high" decoding="async">`;
     $('#title').textContent=item.title || '—';
@@ -61,7 +70,7 @@ function toast(msg, error=false){ const t=$('#toast'); t.textContent=msg; t.clas
     };
 
     $('#shareBtn').onclick=async()=>{
-      const shareData={title:`${item.title} - ZRo-ZRo`,text:item.short_description||'تعريب عربي',url:location.href};
+      const shareData={title:pageTitle,text:pageDescription,url:location.href};
       try{
         if(navigator.share) await navigator.share(shareData);
         else { await navigator.clipboard.writeText(location.href); toast('تم نسخ رابط التعريب.'); }
