@@ -13,7 +13,7 @@ function toast(msg, error=false){ const t=$('#toast'); t.textContent=msg; t.clas
     if (!item) { $('#detailsRoot').innerHTML='<section class="section"><div class="container"><div class="empty">التعريب غير موجود.</div></div></section>'; return; }
     document.title = `${item.title} | ZRo-ZRo`;
     $('#coverBox').classList.remove('skeleton'); $('#coverBox').style.minHeight='0';
-    $('#coverBox').innerHTML=`<img src="${esc(item.cover_url || 'assets/demo/cover-1.svg')}" alt="غلاف ${esc(item.title)}">`;
+    $('#coverBox').innerHTML=`<img src="${esc(item.cover_url || 'assets/demo/cover-1.svg')}" alt="غلاف ${esc(item.title)}" fetchpriority="high" decoding="async">`;
     $('#title').textContent=item.title || '—';
     $('#arabicTitle').textContent=item.arabic_title || '';
     $('#shortDescription').textContent=item.short_description || '';
@@ -23,32 +23,41 @@ function toast(msg, error=false){ const t=$('#toast'); t.textContent=msg; t.clas
     $('#version').textContent=item.version || '—';
     $('#detailTags').innerHTML=[item.category,item.status,item.version?`الإصدار ${item.version}`:null].filter(Boolean).map(x=>`<span>${esc(x)}</span>`).join('');
 
-    const shots = Array.isArray(item.screenshots) ? item.screenshots.filter(Boolean).slice(0,4) : [];
+    const rawShots = Array.isArray(item.screenshots) ? item.screenshots.slice(0,4) : [];
+    const shots = rawShots.map((src,index)=>({src:String(src||'').trim(),slot:index+1})).filter(x=>x.src);
     $('#gallery').innerHTML = shots.length
-      ? shots.map((src,i)=>`<button class="shot-card" data-src="${esc(src)}" aria-label="فتح الصورة ${i+1}"><span class="shot-frame"><img src="${esc(src)}" alt="صورة من التعريب ${i+1}" loading="lazy"></span><span class="shot-meta"><b class="shot-order">الصورة ${i+1}</b><small>عرض اللقطة بالحجم الكامل</small></span></button>`).join('')
+      ? shots.map(({src,slot})=>`<button class="shot-card" data-src="${esc(src)}" aria-label="فتح الصورة ${slot}"><span class="shot-frame"><img src="${esc(src)}" alt="صورة من التعريب ${slot}" loading="lazy" decoding="async"></span><span class="shot-meta"><b class="shot-order">الصورة ${slot}</b><small>عرض اللقطة بالحجم الكامل</small></span></button>`).join('')
       : '<div class="empty">لا توجد صور إضافية لهذا التعريب.</div>';
 
     $('#gallery').addEventListener('click',e=>{const b=e.target.closest('[data-src]');if(!b)return;$('#lightboxImage').src=b.dataset.src;$('#lightbox').classList.add('open');});
     const close=()=>$('#lightbox').classList.remove('open');
     $('#lightboxClose').onclick=close;
     $('#lightbox').addEventListener('click',e=>{if(e.target===$('#lightbox'))close();});
+    document.addEventListener('keydown',e=>{if(e.key==='Escape')close();});
 
     if (!Zero9DB.isDemo) {
       try {
-        const key = `zero9:view:${item.id}`;
+        const key = `zrozro:view:${item.id}`;
         const last = Number(localStorage.getItem(key) || 0);
         if (Date.now() - last > 86400000) {
           await Zero9DB.incrementView(item.id);
           localStorage.setItem(key, String(Date.now()));
         }
-      } catch (e) { await Zero9DB.incrementView(item.id); }
+      } catch (e) {
+        try { await Zero9DB.incrementView(item.id); } catch (_) {}
+      }
     }
 
     $('#downloadBtn').onclick=async()=>{
       if(!item.download_url || item.download_url==='#'){toast('لم يتم تعيين رابط تحميل حقيقي لهذا التعريب.',true);return;}
-      try{await Zero9DB.incrementDownload(item.id);}catch(e){}
-      window.open(item.download_url,'_blank','noopener');
-      $('#downloads').textContent=fmt(Number(item.downloads||0)+1);
+      $('#downloadBtn').disabled=true;
+      try{
+        if(!Zero9DB.isDemo) await Zero9DB.incrementDownload(item.id);
+        window.open(item.download_url,'_blank','noopener,noreferrer');
+        $('#downloads').textContent=fmt(Number(item.downloads||0)+1);
+      }catch(e){
+        window.open(item.download_url,'_blank','noopener,noreferrer');
+      }finally{$('#downloadBtn').disabled=false;}
     };
 
     $('#shareBtn').onclick=async()=>{
