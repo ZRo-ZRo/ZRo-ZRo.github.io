@@ -3,14 +3,20 @@ const fmt = (n) => new Intl.NumberFormat('ar').format(Number(n || 0));
 const esc = (v='') => String(v).replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
 function toast(msg, error=false){ const t=$('#toast'); t.textContent=msg; t.className='toast show'+(error?' error':''); clearTimeout(window.__zt); window.__zt=setTimeout(()=>t.className='toast',2600); }
 function setMeta(selector,value){ const el=$(selector); if(el && value) el.setAttribute('content', value); }
+function safeHttpUrl(value){
+  try {
+    const url = new URL(String(value || '').trim(), location.href);
+    return ['http:','https:'].includes(url.protocol) ? url.href : '';
+  } catch (_) { return ''; }
+}
 
 (async function(){
   $('#year').textContent = new Date().getFullYear();
-  if (Zero9DB.isDemo) $('#demoBanner').hidden = false;
+  if (ZRoZRoDB.isDemo) $('#demoBanner').hidden = false;
   const id = new URLSearchParams(location.search).get('id');
   if (!id) { location.href='index.html'; return; }
   try {
-    const item = await Zero9DB.getLocalization(id);
+    const item = await ZRoZRoDB.getLocalization(id);
     if (!item) { $('#detailsRoot').innerHTML='<section class="section"><div class="container"><div class="empty">التعريب غير موجود.</div></div></section>'; return; }
 
     const pageTitle = `${item.title} | ZRo-ZRo`;
@@ -38,18 +44,32 @@ function setMeta(selector,value){ const el=$(selector); if(el && value) el.setAt
       ? shots.map(({src,slot})=>`<button class="shot-card" data-src="${esc(src)}" aria-label="فتح الصورة ${slot}"><span class="shot-frame"><img src="${esc(src)}" alt="صورة من التعريب ${slot}" loading="lazy" decoding="async"></span><span class="shot-meta"><b class="shot-order">الصورة ${slot}</b><small>عرض اللقطة بالحجم الكامل</small></span></button>`).join('')
       : '<div class="empty">لا توجد صور إضافية لهذا التعريب.</div>';
 
-    $('#gallery').addEventListener('click',e=>{const b=e.target.closest('[data-src]');if(!b)return;$('#lightboxImage').src=b.dataset.src;$('#lightbox').classList.add('open');});
-    const close=()=>$('#lightbox').classList.remove('open');
+    let previousFocus = null;
+    const openLightbox = src => {
+      previousFocus = document.activeElement;
+      $('#lightboxImage').src = src;
+      $('#lightbox').classList.add('open');
+      document.body.style.overflow='hidden';
+      $('#lightboxClose').focus();
+    };
+    const close = () => {
+      if(!$('#lightbox').classList.contains('open')) return;
+      $('#lightbox').classList.remove('open');
+      $('#lightboxImage').removeAttribute('src');
+      document.body.style.overflow='';
+      if(previousFocus && typeof previousFocus.focus==='function') previousFocus.focus();
+    };
+    $('#gallery').addEventListener('click',e=>{const b=e.target.closest('[data-src]');if(!b)return;openLightbox(b.dataset.src);});
     $('#lightboxClose').onclick=close;
     $('#lightbox').addEventListener('click',e=>{if(e.target===$('#lightbox'))close();});
     document.addEventListener('keydown',e=>{if(e.key==='Escape')close();});
 
-    if (!Zero9DB.isDemo) {
+    if (!ZRoZRoDB.isDemo) {
       try {
         const key = `zrozro:view:${item.id}`;
         const last = Number(localStorage.getItem(key) || 0);
         if (Date.now() - last > 86400000) {
-          await Zero9DB.incrementView(item.id);
+          await ZRoZRoDB.incrementView(item.id);
           localStorage.setItem(key, String(Date.now()));
           $('#views').textContent=fmt(Number(item.views||0)+1);
         }
@@ -57,14 +77,14 @@ function setMeta(selector,value){ const el=$(selector); if(el && value) el.setAt
     }
 
     $('#downloadBtn').onclick=()=>{
-      if(!item.download_url || item.download_url==='#'){toast('لم يتم تعيين رابط تحميل حقيقي لهذا التعريب.',true);return;}
+      const downloadUrl = safeHttpUrl(item.download_url);
+      if(!downloadUrl || item.download_url==='#'){toast('رابط التحميل غير متاح أو غير صالح لهذا التعريب.',true);return;}
 
-      // Open synchronously from the user gesture so popup blockers do not reject the download page.
-      const opened = window.open(item.download_url,'_blank','noopener,noreferrer');
-      if(!opened) window.location.href = item.download_url;
+      const opened = window.open(downloadUrl,'_blank','noopener,noreferrer');
+      if(!opened) window.location.href = downloadUrl;
 
-      if(!Zero9DB.isDemo){
-        Zero9DB.incrementDownload(item.id).then(()=>{
+      if(!ZRoZRoDB.isDemo){
+        ZRoZRoDB.incrementDownload(item.id).then(()=>{
           item.downloads=Number(item.downloads||0)+1;
           $('#downloads').textContent=fmt(item.downloads);
         }).catch(()=>{});
