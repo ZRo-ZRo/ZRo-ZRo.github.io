@@ -1,59 +1,118 @@
 (() => {
-  const cfg = window.ZERO9_CONFIG;
-  const isConfigured = cfg && cfg.SUPABASE_URL && cfg.SUPABASE_ANON_KEY &&
-    !cfg.SUPABASE_URL.startsWith('YOUR_') && !cfg.SUPABASE_ANON_KEY.startsWith('YOUR_') && window.supabase;
+  const cfg = window.ZERO9_CONFIG || {};
+  const isConfigured = Boolean(
+    cfg.SUPABASE_URL && cfg.SUPABASE_ANON_KEY && window.supabase &&
+    !String(cfg.SUPABASE_URL).startsWith('YOUR_') &&
+    !String(cfg.SUPABASE_ANON_KEY).startsWith('YOUR_')
+  );
 
-  const client = isConfigured ? window.supabase.createClient(cfg.SUPABASE_URL, cfg.SUPABASE_ANON_KEY) : null;
+  const client = isConfigured
+    ? window.supabase.createClient(cfg.SUPABASE_URL, cfg.SUPABASE_ANON_KEY, {
+        auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true }
+      })
+    : null;
+
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  const ALLOWED_TYPES = new Map([
+    ['image/jpeg', 'jpg'],
+    ['image/png', 'png'],
+    ['image/webp', 'webp'],
+    ['image/avif', 'avif']
+  ]);
+  const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
+
+  function ensureClient() {
+    if (!client) throw new Error('فعّل Supabase أولاً من assets/js/config.js');
+  }
+
+  function normalizePayload(payload = {}) {
+    const screenshots = Array.isArray(payload.screenshots)
+      ? payload.screenshots.slice(0, 4).map(v => String(v || '').trim())
+      : ['', '', '', ''];
+    while (screenshots.length < 4) screenshots.push('');
+
+    return {
+      ...(payload.id ? { id: payload.id } : {}),
+      title: String(payload.title || '').trim(),
+      arabic_title: String(payload.arabic_title || '').trim(),
+      slug: String(payload.slug || '').trim(),
+      category: String(payload.category || '').trim(),
+      version: String(payload.version || '').trim(),
+      status: String(payload.status || 'مكتمل').trim(),
+      short_description: String(payload.short_description || '').trim(),
+      description: String(payload.description || '').trim(),
+      cover_url: String(payload.cover_url || '').trim(),
+      screenshots,
+      download_url: String(payload.download_url || '').trim(),
+      featured: Boolean(payload.featured)
+    };
+  }
 
   const api = {
     client,
     isDemo: !isConfigured,
 
     async listLocalizations() {
-      if (!client) return [...window.ZERO9_DEMO_DATA];
-      const { data, error } = await client.from('localizations').select('*').order('featured', { ascending: false }).order('created_at', { ascending: false });
+      if (!client) return [...(window.ZERO9_DEMO_DATA || [])];
+      const { data, error } = await client
+        .from('localizations')
+        .select('*')
+        .order('featured', { ascending: false })
+        .order('created_at', { ascending: false });
       if (error) throw error;
       return data || [];
     },
 
     async getLocalization(slugOrId) {
-      if (!client) return window.ZERO9_DEMO_DATA.find(x => x.slug === slugOrId || x.id === slugOrId) || null;
-      let q = client.from('localizations').select('*').eq('slug', slugOrId).maybeSingle();
-      let { data, error } = await q;
-      if (error) throw error;
-      if (!data) {
-        const second = await client.from('localizations').select('*').eq('id', slugOrId).maybeSingle();
-        if (second.error) throw second.error;
-        data = second.data;
+      if (!client) {
+        return (window.ZERO9_DEMO_DATA || []).find(x => x.slug === slugOrId || x.id === slugOrId) || null;
       }
-      return data;
+
+      const key = String(slugOrId || '').trim();
+      if (!key) return null;
+
+      const first = await client.from('localizations').select('*').eq('slug', key).maybeSingle();
+      if (first.error) throw first.error;
+      if (first.data) return first.data;
+
+      if (!UUID_RE.test(key)) return null;
+      const second = await client.from('localizations').select('*').eq('id', key).maybeSingle();
+      if (second.error) throw second.error;
+      return second.data || null;
     },
 
     async incrementView(id) {
-      if (!client || String(id).startsWith('demo-')) return;
-      await client.rpc('increment_localization_views', { row_id: id });
+      if (!client || !UUID_RE.test(String(id || ''))) return false;
+      const { error } = await client.rpc('increment_localization_views', { row_id: id });
+      if (error) throw error;
+      return true;
     },
 
     async incrementDownload(id) {
-      if (!client || String(id).startsWith('demo-')) return;
-      await client.rpc('increment_localization_downloads', { row_id: id });
+      if (!client || !UUID_RE.test(String(id || ''))) return false;
+      const { error } = await client.rpc('increment_localization_downloads', { row_id: id });
+      if (error) throw error;
+      return true;
     },
 
     async signIn(email, password) {
-      if (!client) throw new Error('فعّل Supabase أولاً من assets/js/config.js');
+      ensureClient();
       const { data, error } = await client.auth.signInWithPassword({ email, password });
       if (error) throw error;
       return data;
     },
 
     async signOut() {
-      if (client) await client.auth.signOut();
+      if (!client) return;
+      const { error } = await client.auth.signOut();
+      if (error) throw error;
     },
 
     async getSession() {
       if (!client) return null;
-      const { data } = await client.auth.getSession();
-      return data.session;
+      const { data, error } = await client.auth.getSession();
+      if (error) throw error;
+      return data.session || null;
     },
 
     async isOwner() {
@@ -61,32 +120,61 @@
       const session = await this.getSession();
       if (!session) return false;
       const { data, error } = await client.rpc('is_owner');
-      return !error && data === true;
+      if (error) return false;
+      return data === true;
     },
 
     async saveLocalization(payload) {
-      if (!client) throw new Error('وضع العرض لا يسمح بالحفظ. فعّل Supabase.');
-      const clean = { ...payload };
-      if (!clean.id) delete clean.id;
-      const { data, error } = await client.from('localizations').upsert(clean, { onConflict: 'id' }).select().single();
-      if (error) throw error;
-      return data;
+      ensureClient();
+      const clean = normalizePayload(payload);
+      if (!clean.title || !clean.slug || !clean.download_url) {
+        throw new Error('الاسم وSlug ورابط التحميل حقول إلزامية.');
+      }
+
+      let result;
+      if (clean.id && UUID_RE.test(String(clean.id))) {
+        result = await client.from('localizations').update(clean).eq('id', clean.id).select().single();
+      } else {
+        delete clean.id;
+        result = await client.from('localizations').insert(clean).select().single();
+      }
+
+      if (result.error) {
+        if (result.error.code === '23505') throw new Error('Slug مستخدم بالفعل لتعريب آخر. اختر قيمة مختلفة.');
+        throw result.error;
+      }
+      return result.data;
     },
 
     async deleteLocalization(id) {
-      if (!client) throw new Error('وضع العرض لا يسمح بالحذف.');
+      ensureClient();
+      if (!UUID_RE.test(String(id || ''))) throw new Error('معرّف التعريب غير صالح.');
       const { error } = await client.from('localizations').delete().eq('id', id);
       if (error) throw error;
     },
 
     async uploadMedia(file, folder = 'images') {
-      if (!client) throw new Error('فعّل Supabase أولاً.');
-      const ext = (file.name.split('.').pop() || 'bin').toLowerCase().replace(/[^a-z0-9]/g, '');
-      const safeName = `${Date.now()}-${crypto.randomUUID()}.${ext}`;
-      const path = `${folder}/${safeName}`;
-      const { error } = await client.storage.from(cfg.MEDIA_BUCKET).upload(path, file, { upsert: false, cacheControl: '3600' });
+      ensureClient();
+      if (!(file instanceof File)) throw new Error('ملف الصورة غير صالح.');
+      if (!ALLOWED_TYPES.has(file.type)) throw new Error('نوع الصورة غير مدعوم. استخدم JPG أو PNG أو WebP أو AVIF.');
+      if (file.size <= 0 || file.size > MAX_IMAGE_BYTES) throw new Error('حجم الصورة يجب ألا يتجاوز 8 ميجابايت.');
+
+      const ext = ALLOWED_TYPES.get(file.type);
+      const uid = (window.crypto && window.crypto.randomUUID)
+        ? window.crypto.randomUUID()
+        : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      const safeFolder = String(folder || 'images').replace(/[^a-z0-9/_-]/gi, '').replace(/^\/+|\/+$/g, '') || 'images';
+      const path = `${safeFolder}/${Date.now()}-${uid}.${ext}`;
+
+      const { error } = await client.storage.from(cfg.MEDIA_BUCKET).upload(path, file, {
+        upsert: false,
+        cacheControl: '31536000',
+        contentType: file.type
+      });
       if (error) throw error;
+
       const { data } = client.storage.from(cfg.MEDIA_BUCKET).getPublicUrl(path);
+      if (!data?.publicUrl) throw new Error('تم رفع الصورة لكن تعذر إنشاء رابطها العام.');
       return data.publicUrl;
     }
   };
