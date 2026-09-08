@@ -1,5 +1,6 @@
 (() => {
-  const cfg = window.ZERO9_CONFIG || {};
+  const cfg = window.ZRORO_CONFIG || window.ZERO9_CONFIG || {};
+  const demoData = window.ZRORO_DEMO_DATA || window.ZERO9_DEMO_DATA || [];
   const isConfigured = Boolean(
     cfg.SUPABASE_URL && cfg.SUPABASE_ANON_KEY && window.supabase &&
     !String(cfg.SUPABASE_URL).startsWith('YOUR_') &&
@@ -53,7 +54,7 @@
     isDemo: !isConfigured,
 
     async listLocalizations() {
-      if (!client) return [...(window.ZERO9_DEMO_DATA || [])];
+      if (!client) return [...demoData];
       const { data, error } = await client
         .from('localizations')
         .select('*')
@@ -64,9 +65,7 @@
     },
 
     async getLocalization(slugOrId) {
-      if (!client) {
-        return (window.ZERO9_DEMO_DATA || []).find(x => x.slug === slugOrId || x.id === slugOrId) || null;
-      }
+      if (!client) return demoData.find(x => x.slug === slugOrId || x.id === slugOrId) || null;
 
       const key = String(slugOrId || '').trim();
       if (!key) return null;
@@ -179,5 +178,7 @@
     }
   };
 
+  window.ZRoZRoDB = api;
+  // Backward compatibility for older cached JavaScript.
   window.Zero9DB = api;
 })();
