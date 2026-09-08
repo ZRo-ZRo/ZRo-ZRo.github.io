@@ -1,13 +1,77 @@
-<!doctype html><html lang="ar" dir="rtl"><head>
-<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#06120d">
-<title>تفاصيل التعريب | ZRo-ZRo</title><link rel="stylesheet" href="assets/css/style.css"><link rel="icon" href="favicon.svg" type="image/svg+xml"></head><body>
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#020303">
+<title>تفاصيل التعريب | ZRo-ZRo</title>
+<link rel="stylesheet" href="assets/css/style.css">
+<link rel="stylesheet" href="assets/css/refresh.css">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+</head>
+<body>
 <div id="demoBanner" class="demo-banner" hidden>وضع العرض التجريبي — العدادات الحقيقية تعمل بعد تفعيل Supabase.</div>
-<header class="nav"><div class="container nav-inner"><a class="brand" href="index.html"><span class="brand-mark"></span><span class="brand-text">ZRo<span>-ZRo</span></span></a><nav class="nav-links"><a href="index.html#library">المكتبة</a></nav></div></header>
-<main id="detailsRoot"><section class="details-hero"><div class="container"><a class="back-link" href="index.html#library">→ العودة إلى المكتبة</a><div class="details-grid">
-  <div class="details-cover skeleton" id="coverBox" style="min-height:520px"></div>
-  <div class="details-info"><span class="eyebrow"><i class="pulse"></i> تعريب عربي</span><h1 id="title">جارٍ التحميل...</h1><div class="details-ar" id="arabicTitle"></div><p class="lead" id="shortDescription"></p><div class="detail-tags" id="detailTags"></div><div class="detail-actions"><button class="btn btn-primary" id="downloadBtn">تحميل التعريب ↓</button><button class="btn btn-ghost" id="shareBtn">مشاركة التعريب ↗</button></div><div class="detail-stats"><div class="detail-stat"><strong id="views">—</strong><small>مشاهدة</small></div><div class="detail-stat"><strong id="downloads">—</strong><small>تحميل</small></div><div class="detail-stat"><strong id="version">—</strong><small>الإصدار</small></div></div><div class="description-box"><h3>تفاصيل التعريب</h3><p id="description"></p></div></div>
-</div></div></section><section class="section"><div class="container"><div class="section-head"><div><h2>صور من التعريب</h2><p>لقطات من داخل اللعبة والواجهة العربية.</p></div></div><div class="gallery" id="gallery"></div></div></section></main>
-<div class="lightbox" id="lightbox"><button class="lightbox-close" id="lightboxClose">×</button><img id="lightboxImage" alt="صورة من التعريب"></div><div class="toast" id="toast"></div>
-<footer class="footer"><div class="container footer-inner"><span><b>ZRo-ZRo</b> — مكتبة التعريبات العربية</span><span>© <span id="year"></span></span></div></footer>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script><script src="assets/js/config.js"></script><script src="assets/js/data.js"></script><script src="assets/js/db.js"></script><script src="assets/js/details.js"></script>
-</body></html>
+<header class="nav">
+  <div class="container nav-inner">
+    <a class="brand" href="index.html"><span class="brand-mark"></span><span class="brand-text">ZRo<span>-ZRo</span></span></a>
+    <nav class="nav-links"><a href="index.html#library">المكتبة</a></nav>
+  </div>
+</header>
+
+<main id="detailsRoot">
+  <section class="details-hero details-hero-modern">
+    <div class="container">
+      <a class="back-link" href="index.html#library">→ العودة إلى المكتبة</a>
+      <div class="details-grid details-grid-modern">
+        <div class="details-cover skeleton" id="coverBox" style="min-height:520px"></div>
+        <div class="details-info details-info-modern">
+          <span class="eyebrow"><i class="pulse"></i> صفحة التعريب</span>
+          <h1 id="title">جارٍ التحميل...</h1>
+          <div class="details-ar" id="arabicTitle"></div>
+          <p class="lead" id="shortDescription"></p>
+          <div class="detail-tags" id="detailTags"></div>
+          <div class="detail-actions">
+            <button class="btn btn-primary" id="downloadBtn">تحميل التعريب ↓</button>
+            <button class="btn btn-ghost" id="shareBtn">مشاركة التعريب ↗</button>
+          </div>
+          <div class="detail-stats detail-stats-modern">
+            <div class="detail-stat"><strong id="views">—</strong><small>مشاهدة</small></div>
+            <div class="detail-stat"><strong id="downloads">—</strong><small>تحميل</small></div>
+            <div class="detail-stat"><strong id="version">—</strong><small>الإصدار</small></div>
+          </div>
+          <div class="description-box description-box-modern">
+            <h3>تفاصيل التعريب</h3>
+            <p id="description"></p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section section-gallery">
+    <div class="container">
+      <div class="section-head section-head-compact">
+        <div>
+          <h2>صور من التعريب</h2>
+          <p>الصور مرتبة بالترتيب: الصورة 1، الصورة 2، الصورة 3، الصورة 4.</p>
+        </div>
+      </div>
+      <div class="gallery gallery-modern" id="gallery"></div>
+    </div>
+  </section>
+</main>
+
+<div class="lightbox" id="lightbox"><button class="lightbox-close" id="lightboxClose">×</button><img id="lightboxImage" alt="صورة من التعريب"></div>
+<div class="toast" id="toast"></div>
+
+<footer class="footer">
+  <div class="container footer-inner"><span><b>ZRo-ZRo</b> — مكتبة التعريبات العربية</span><span>© <span id="year"></span></span></div>
+</footer>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="assets/js/config.js"></script>
+<script src="assets/js/data.js"></script>
+<script src="assets/js/db.js"></script>
+<script src="assets/js/details.js"></script>
+</body>
+</html>
