@@ -13,10 +13,14 @@
 
   Leaving the two placeholders unchanged keeps ZRo-ZRo in DEMO mode.
 */
-window.ZERO9_CONFIG = Object.freeze({
+const ZRORO_CONFIG = Object.freeze({
   SUPABASE_URL: 'YOUR_SUPABASE_URL',
   SUPABASE_ANON_KEY: 'YOUR_SUPABASE_ANON_KEY',
   SITE_NAME: 'ZRo-ZRo',
   SITE_URL: 'https://zro-zro.github.io/',
   MEDIA_BUCKET: 'zro-zro-media'
 });
+
+window.ZRORO_CONFIG = ZRORO_CONFIG;
+// Backward compatibility for older cached JavaScript.
+window.ZERO9_CONFIG = ZRORO_CONFIG;
