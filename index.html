@@ -1,42 +1,105 @@
 <!doctype html>
 <html lang="ar" dir="rtl">
 <head>
-  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta name="theme-color" content="#06120d"><meta name="description" content="ZRo-ZRo - مكتبة تعريبات عربية احترافية للألعاب">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#020303">
+  <meta name="description" content="ZRo-ZRo - مكتبة احترافية لتعريبات الألعاب العربية بتصميم سريع وحديث">
   <title>ZRo-ZRo | مكتبة التعريبات</title>
   <link rel="stylesheet" href="assets/css/style.css">
-<link rel="icon" href="favicon.svg" type="image/svg+xml"></head>
+  <link rel="stylesheet" href="assets/css/refresh.css">
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+</head>
 <body>
   <div id="demoBanner" class="demo-banner" hidden>وضع العرض التجريبي — فعّل Supabase لتحويل العدادات والإدارة إلى بيانات حقيقية.</div>
-  <header class="nav"><div class="container nav-inner">
-    <a class="brand" href="index.html"><span class="brand-mark"></span><span class="brand-text">ZRo<span>-ZRo</span></span></a>
-    <nav class="nav-links"><a class="active" href="#library">المكتبة</a><a href="#about">عن ZRo-ZRo</a></nav>
-  </div></header>
+
+  <header class="nav">
+    <div class="container nav-inner">
+      <a class="brand" href="index.html" aria-label="العودة للرئيسية">
+        <span class="brand-mark"></span>
+        <span class="brand-text">ZRo<span>-ZRo</span></span>
+      </a>
+      <nav class="nav-links">
+        <a class="active" href="#library">المكتبة</a>
+      </nav>
+    </div>
+  </header>
 
   <main>
-    <section class="hero"><div class="container hero-grid">
-      <div>
-        <span class="eyebrow"><i class="pulse"></i> مكتبة تعريبات عربية للألعاب</span>
-        <h1>اكتشف الألعاب<br><span class="accent">بلغتك.</span></h1>
-        <p>مكتبة منظمة لتعريبات الألعاب العربية، بتفاصيل الإصدار والصور وروابط التحميل المباشرة في تجربة مصممة للاعب العربي.</p>
-        <div class="hero-actions"><a class="btn btn-primary" href="#library">استعرض التعريبات <span>←</span></a><a class="btn btn-ghost" href="#about">عن المكتبة</a></div>
-      </div>
-      <div class="hero-card" aria-hidden="true">
-        <div class="mini-window"><div class="mini-dots"><i></i><i></i><i></i></div><div class="mini-lines"><i></i><i></i><i></i></div></div>
-        <div class="stats-row"><div class="stat-box"><strong id="heroGames">0</strong><span>تعريب</span></div><div class="stat-box"><strong id="heroDownloads">0</strong><span>تحميل</span></div><div class="stat-box"><strong id="heroViews">0</strong><span>مشاهدة</span></div></div>
-      </div>
-    </div></section>
+    <section class="hero hero-v2">
+      <div class="container">
+        <div class="hero-shell">
+          <div class="hero-copy">
+            <span class="hero-kicker">منصة ZRo-ZRo</span>
+            <h1>تعريبات احترافية<br><span class="accent">بتجربة أسرع وأوضح</span></h1>
+            <p>منصة مخصصة لتنظيم تعريبات الألعاب العربية مع عرض الغلاف، الإصدار، الصور، وعدادات المشاهدة والتحميل داخل واجهة حديثة داكنة وسريعة.</p>
+            <div class="hero-actions">
+              <a class="btn btn-primary" href="#library">ابدأ التصفح</a>
+            </div>
+            <div class="hero-inline-stats">
+              <div class="inline-stat"><strong id="heroGames">0</strong><span>تعريب</span></div>
+              <div class="inline-stat"><strong id="heroDownloads">0</strong><span>تحميل</span></div>
+              <div class="inline-stat"><strong id="heroViews">0</strong><span>مشاهدة</span></div>
+            </div>
+          </div>
 
-    <section class="section" id="library"><div class="container">
-      <div class="section-head"><div><h2>مكتبة التعريبات</h2><p>ابحث عن التعريب المناسب واستعرض تفاصيله قبل التحميل.</p></div><span class="count-label" id="resultsCount">—</span></div>
-      <div class="toolbar"><div class="search"><input id="searchInput" type="search" placeholder="ابحث باسم اللعبة أو التعريب..." autocomplete="off"></div><div class="filters" id="filters"><button class="chip active" data-category="الكل">الكل</button></div></div>
-      <div class="library-grid" id="libraryGrid"></div>
-    </div></section>
+          <div class="hero-dashboard" aria-hidden="true">
+            <div class="dashboard-panel panel-main">
+              <div class="panel-head">
+                <span>حالة المكتبة</span>
+                <b>مباشر</b>
+              </div>
+              <div class="signal-grid">
+                <div><small>واجهة</small><strong>Ultra Dark</strong></div>
+                <div><small>تنظيم</small><strong>مرتب</strong></div>
+                <div><small>وصول</small><strong>سريع</strong></div>
+                <div><small>عرض</small><strong>احترافي</strong></div>
+              </div>
+            </div>
+            <div class="dashboard-strip">
+              <div class="strip-card"><span>التصنيفات</span><b id="heroCategories">0</b></div>
+              <div class="strip-card"><span>العناصر المميزة</span><b id="heroFeatured">0</b></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
 
-    <section class="section" id="about"><div class="container"><div class="description-box"><h3>ZRo-ZRo</h3><p>واجهة مخصصة لعرض التعريبات العربية بصورة مرتبة واحترافية. كل تعريب يمتلك صفحة مستقلة تتضمن الغلاف، التفاصيل، صورًا من داخل اللعبة، الإصدار، عدد المشاهدات، عدد التحميلات، وأدوات المشاركة.</p></div></div></section>
+    <section class="section library-section" id="library">
+      <div class="container">
+        <div class="section-head section-head-compact">
+          <div>
+            <h2>مكتبة التعريبات</h2>
+            <p>ابحث بسرعة، صفِّ حسب التصنيف، وافتح صفحة كل تعريب لتفاصيل أكثر.</p>
+          </div>
+          <span class="count-label" id="resultsCount">—</span>
+        </div>
+
+        <div class="toolbar toolbar-modern">
+          <div class="search search-modern">
+            <input id="searchInput" type="search" placeholder="ابحث باسم اللعبة أو التعريب..." autocomplete="off">
+          </div>
+          <div class="filters filters-modern" id="filters">
+            <button class="chip active" data-category="الكل">الكل</button>
+          </div>
+        </div>
+
+        <div class="library-grid library-grid-modern" id="libraryGrid"></div>
+      </div>
+    </section>
   </main>
-  <footer class="footer"><div class="container footer-inner"><span><b>ZRo-ZRo</b> — مكتبة التعريبات العربية</span><span>© <span id="year"></span> جميع الحقوق محفوظة</span></div></footer>
+
+  <footer class="footer">
+    <div class="container footer-inner">
+      <span><b>ZRo-ZRo</b> — مكتبة التعريبات العربية</span>
+      <span>© <span id="year"></span> جميع الحقوق محفوظة</span>
+    </div>
+  </footer>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="assets/js/config.js"></script><script src="assets/js/data.js"></script><script src="assets/js/db.js"></script><script src="assets/js/app.js"></script>
-</body></html>
+  <script src="assets/js/config.js"></script>
+  <script src="assets/js/data.js"></script>
+  <script src="assets/js/db.js"></script>
+  <script src="assets/js/app.js"></script>
+</body>
+</html>
