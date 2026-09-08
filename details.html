@@ -4,16 +4,27 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="theme-color" content="#020303">
+<meta name="color-scheme" content="dark">
+<meta name="description" id="metaDescription" content="تفاصيل تعريب عربي من مكتبة ZRo-ZRo">
+<meta property="og:type" content="article">
+<meta property="og:locale" content="ar_AR">
+<meta property="og:site_name" content="ZRo-ZRo">
+<meta property="og:title" id="ogTitle" content="تفاصيل التعريب | ZRo-ZRo">
+<meta property="og:description" id="ogDescription" content="تفاصيل تعريب عربي من مكتبة ZRo-ZRo">
+<meta property="og:url" id="ogUrl" content="https://zro-zro.github.io/details.html">
 <title>تفاصيل التعريب | ZRo-ZRo</title>
+<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+<link rel="dns-prefetch" href="//cdn.jsdelivr.net">
 <link rel="stylesheet" href="assets/css/style.css">
 <link rel="stylesheet" href="assets/css/refresh.css">
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="manifest" href="site.webmanifest">
 </head>
 <body>
 <div id="demoBanner" class="demo-banner" hidden>وضع العرض التجريبي — العدادات الحقيقية تعمل بعد تفعيل Supabase.</div>
 <header class="nav">
   <div class="container nav-inner">
-    <a class="brand" href="index.html"><span class="brand-mark"></span><span class="brand-text">ZRo<span>-ZRo</span></span></a>
+    <a class="brand" href="index.html" aria-label="العودة للرئيسية"><span class="brand-mark"></span><span class="brand-text">ZRo<span>-ZRo</span></span></a>
     <nav class="nav-links"><a href="index.html#library">المكتبة</a></nav>
   </div>
 </header>
@@ -61,8 +72,8 @@
   </section>
 </main>
 
-<div class="lightbox" id="lightbox"><button class="lightbox-close" id="lightboxClose">×</button><img id="lightboxImage" alt="صورة من التعريب"></div>
-<div class="toast" id="toast"></div>
+<div class="lightbox" id="lightbox" role="dialog" aria-modal="true" aria-label="عرض الصورة بالحجم الكامل"><button class="lightbox-close" id="lightboxClose" aria-label="إغلاق">×</button><img id="lightboxImage" alt="صورة من التعريب"></div>
+<div class="toast" id="toast" aria-live="polite"></div>
 
 <footer class="footer">
   <div class="container footer-inner"><span><b>ZRo-ZRo</b> — مكتبة التعريبات العربية</span><span>© <span id="year"></span></span></div>
