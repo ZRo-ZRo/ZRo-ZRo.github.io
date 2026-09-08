@@ -3,111 +3,109 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta name="theme-color" content="#020303">
+  <meta name="theme-color" content="#090806">
   <meta name="color-scheme" content="dark">
-  <meta name="description" content="ZRo-ZRo - مكتبة احترافية وسريعة لتعريبات الألعاب العربية">
+  <meta name="description" content="مكتبة ZRo-ZrRo لتعريبات الألعاب العربية المجانية.">
+  <meta name="robots" content="index,follow,max-image-preview:large">
   <meta property="og:type" content="website">
   <meta property="og:locale" content="ar_AR">
-  <meta property="og:site_name" content="ZRo-ZRo">
-  <meta property="og:title" content="ZRo-ZRo | مكتبة التعريبات">
-  <meta property="og:description" content="مكتبة احترافية لتعريبات الألعاب العربية مع تفاصيل وصور وروابط تحميل.">
+  <meta property="og:site_name" content="ZRo-ZrRo">
+  <meta property="og:title" content="تعريبات ZRo-ZrRo">
+  <meta property="og:description" content="تعريبات ألعاب عربية مجانية بتحميل مباشر دون تسجيل.">
   <meta property="og:url" content="https://zro-zro.github.io/">
-  <meta name="twitter:card" content="summary">
+  <meta property="og:image" content="https://zro-zro.github.io/assets/zro-zro-logo.webp">
+  <meta name="twitter:card" content="summary_large_image">
   <link rel="canonical" href="https://zro-zro.github.io/">
-  <title>ZRo-ZRo | مكتبة التعريبات</title>
-  <link rel="stylesheet" href="assets/css/style.css?v=20260908-4">
-  <link rel="stylesheet" href="assets/css/refresh.css?v=20260908-4">
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
   <link rel="manifest" href="site.webmanifest">
+  <link rel="preload" href="assets/zro-zro-logo.webp" as="image" type="image/webp">
+  <link rel="stylesheet" href="styles.css?v=1">
+  <script src="data.js?v=1" defer></script>
+  <script src="app.js?v=1" defer></script>
+  <title>تعريبات ZRo-ZrRo</title>
 </head>
 <body>
-  <div id="demoBanner" class="demo-banner" hidden>وضع العرض التجريبي — فعّل Supabase لتحويل العدادات والإدارة إلى بيانات حقيقية.</div>
+  <div class="page-loader" id="page-loader" aria-hidden="true"><span></span></div>
 
-  <header class="nav">
-    <div class="container nav-inner">
-      <a class="brand" href="index.html" aria-label="العودة للرئيسية">
-        <span class="brand-mark"></span>
-        <span class="brand-text">ZRo<span>-ZRo</span></span>
+  <header class="site-header">
+    <div class="shell header-inner">
+      <a class="brand" href="#top" aria-label="تعريبات ZRo-ZrRo">
+        <img src="assets/zro-zro-logo.webp" width="48" height="48" alt="">
+        <span>تعريبات <b>ZRo-ZrRo</b></span>
       </a>
-      <nav class="nav-links">
-        <a class="active" href="#library">المكتبة</a>
+      <nav class="main-nav" aria-label="التنقل الرئيسي">
+        <a href="#library">المكتبة</a>
+        <a href="#news">الأخبار</a>
+        <a class="discord-link" href="https://discord.gg/CCKuTjFgnM" target="_blank" rel="noopener noreferrer">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19.5 5.3A17 17 0 0 0 15.4 4l-.5 1a15 15 0 0 0-5.8 0l-.5-1a17 17 0 0 0-4.1 1.3C1.9 9.1 1.2 12.8 1.5 16.4a16 16 0 0 0 5 2.6l1.2-1.7a10 10 0 0 1-1.8-.9l.5-.4c3.5 1.6 7.4 1.6 11 0l.6.4a12 12 0 0 1-1.9.9l1.2 1.7a16 16 0 0 0 5-2.6c.4-4.2-.7-7.9-2.8-11.1ZM8.6 14.3c-1.1 0-2-1-2-2.3s.9-2.3 2-2.3 2 1 2 2.3-.9 2.3-2 2.3Zm6.8 0c-1.1 0-2-1-2-2.3s.9-2.3 2-2.3 2 1 2 2.3-.9 2.3-2 2.3Z"/></svg>
+          <span>مجتمع Discord</span>
+        </a>
       </nav>
     </div>
   </header>
 
-  <main>
-    <section class="hero hero-v2">
-      <div class="container">
-        <div class="hero-shell">
-          <div class="hero-copy">
-            <span class="hero-kicker">منصة ZRo-ZRo</span>
-            <h1>تعريبات احترافية<br><span class="accent">بتجربة أسرع وأوضح</span></h1>
-            <p>منصة مخصصة لتنظيم تعريبات الألعاب العربية مع عرض الغلاف، الإصدار، الصور، وعدادات المشاهدة والتحميل داخل واجهة حديثة داكنة وسريعة.</p>
-            <div class="hero-actions">
-              <a class="btn btn-primary" href="#library">ابدأ التصفح</a>
-            </div>
-            <div class="hero-inline-stats">
-              <div class="inline-stat"><strong id="heroGames">0</strong><span>تعريب</span></div>
-              <div class="inline-stat"><strong id="heroDownloads">0</strong><span>تحميل</span></div>
-              <div class="inline-stat"><strong id="heroViews">0</strong><span>مشاهدة</span></div>
-            </div>
-          </div>
+  <main id="top">
+    <section class="library-section" id="library">
+      <div class="shell">
+        <div class="section-heading">
+          <div><p class="eyebrow">ZRo-ZrRo</p><h1>مكتبة التعريبات</h1></div>
+          <span class="library-count" id="library-count">٠ تعريب</span>
+        </div>
 
-          <div class="hero-dashboard" aria-hidden="true">
-            <div class="dashboard-panel panel-main">
-              <div class="panel-head">
-                <span>حالة المكتبة</span>
-                <b>مباشر</b>
-              </div>
-              <div class="signal-grid">
-                <div><small>واجهة</small><strong>Ultra Dark</strong></div>
-                <div><small>تنظيم</small><strong>مرتب</strong></div>
-                <div><small>وصول</small><strong>سريع</strong></div>
-                <div><small>عرض</small><strong>احترافي</strong></div>
-              </div>
-            </div>
-            <div class="dashboard-strip">
-              <div class="strip-card"><span>التصنيفات</span><b id="heroCategories">0</b></div>
-              <div class="strip-card"><span>العناصر المميزة</span><b id="heroFeatured">0</b></div>
-            </div>
+        <div class="library-tools">
+          <label class="search-box" for="catalog-search">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m21 21-4.4-4.4m2.4-5.1A7.5 7.5 0 1 1 4 11.5a7.5 7.5 0 0 1 15 0Z"/></svg>
+            <input id="catalog-search" type="search" autocomplete="off" enterkeyhint="search" placeholder="ابحث باسم اللعبة…">
+          </label>
+          <div class="filters" id="filters" aria-label="تصفية التعريبات">
+            <button class="filter is-active" type="button" data-filter="all">الكل</button>
+            <button class="filter" type="button" data-filter="featured">المميز</button>
+            <button class="filter" type="button" data-filter="new">الجديد</button>
           </div>
+        </div>
+
+        <p class="results-status" id="results-status" role="status"></p>
+        <div class="catalog-grid" id="catalog-grid"></div>
+        <div class="empty-state" id="catalog-empty" hidden>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6.5A2.5 2.5 0 0 1 6.5 4h11A2.5 2.5 0 0 1 20 6.5v11a2.5 2.5 0 0 1-2.5 2.5h-11A2.5 2.5 0 0 1 4 17.5Z"/><path d="M8 9h8M8 13h5"/></svg>
+          <h2>لا توجد تعريبات منشورة حاليًا</h2>
         </div>
       </div>
     </section>
 
-    <section class="section library-section" id="library">
-      <div class="container">
-        <div class="section-head section-head-compact">
-          <div>
-            <h2>مكتبة التعريبات</h2>
-            <p>ابحث بسرعة، صفِّ حسب التصنيف، وافتح صفحة كل تعريب لتفاصيل أكثر.</p>
-          </div>
-          <span class="count-label" id="resultsCount" aria-live="polite">—</span>
-        </div>
+    <section class="news-section" id="news">
+      <div class="shell">
+        <div class="section-heading"><div><p class="eyebrow">آخر المستجدات</p><h2>أخبار التعريبات</h2></div></div>
+        <div class="news-grid" id="news-grid"></div>
+        <div class="empty-state compact" id="news-empty" hidden><h3>لا توجد أخبار منشورة حاليًا</h3></div>
+      </div>
+    </section>
 
-        <div class="toolbar toolbar-modern">
-          <div class="search search-modern">
-            <input id="searchInput" type="search" placeholder="ابحث باسم اللعبة أو التعريب..." autocomplete="off" enterkeyhint="search" aria-label="البحث في التعريبات">
-          </div>
-          <div class="filters filters-modern" id="filters" aria-label="تصنيفات التعريبات">
-            <button class="chip active" data-category="الكل">الكل</button>
-          </div>
-        </div>
-
-        <div class="library-grid library-grid-modern" id="libraryGrid"></div>
+    <section class="community-section">
+      <div class="shell community-card">
+        <img src="assets/zro-zro-logo.webp" width="210" height="210" alt="شعار ZRo-ZrRo" loading="lazy">
+        <div><p class="eyebrow">مجتمع ZRo-ZrRo</p><h2>تابع جديد التعريبات</h2><p>انضم إلى مجتمع Discord لمتابعة الإصدارات والتحديثات.</p></div>
+        <a class="button primary" href="https://discord.gg/CCKuTjFgnM" target="_blank" rel="noopener noreferrer">الانضمام إلى Discord</a>
       </div>
     </section>
   </main>
 
-  <footer class="footer">
-    <div class="container footer-inner">
-      <span><b>ZRo-ZRo</b> — مكتبة التعريبات العربية</span>
-      <span>© <span id="year"></span> جميع الحقوق محفوظة</span>
+  <section class="detail-view" id="detail-view" hidden aria-live="polite">
+    <div class="shell detail-shell">
+      <button class="back-button" id="detail-back" type="button">العودة إلى المكتبة</button>
+      <article id="detail-content"></article>
     </div>
-  </footer>
+  </section>
 
-  <script src="assets/js/config.js?v=20260908-4"></script>
-  <script src="assets/js/data.js?v=20260908-4"></script>
-  <script src="assets/js/runtime.js?v=20260908-4" data-version="20260908-4" data-entry="assets/js/app.js"></script>
+  <div class="lightbox" id="lightbox" hidden role="dialog" aria-modal="true" aria-label="عرض الصورة">
+    <button type="button" id="lightbox-close" aria-label="إغلاق">×</button>
+    <img id="lightbox-image" alt="">
+  </div>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <footer class="site-footer">
+    <div class="shell footer-inner"><span>تعريبات <b>ZRo-ZrRo</b></span><span>© <span id="year"></span></span></div>
+  </footer>
 </body>
 </html>

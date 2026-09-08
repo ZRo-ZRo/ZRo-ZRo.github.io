@@ -1,9 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="900" height="1125" viewBox="0 0 900 1125">
-<defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#07150f"/><stop offset=".55" stop-color="#0d2b1d"/><stop offset="1" stop-color="#05110b"/></linearGradient><radialGradient id="r"><stop stop-color="#2bd171" stop-opacity=".22"/><stop offset="1" stop-color="#2bd171" stop-opacity="0"/></radialGradient></defs>
-<rect width="100%" height="100%" fill="url(#g)"/><circle cx="702" cy="225" r="342" fill="url(#r)"/>
-<g opacity=".08" stroke="#2bd171"><path d="M0 247 H900"/><path d="M0 472 H900"/><path d="M0 697 H900"/><path d="M0 922 H900"/></g>
-<g transform="translate(72 146)"><rect width="120" height="120" rx="34" fill="#102f20" stroke="#2bd171" stroke-opacity=".45"/><text x="60" y="82" text-anchor="middle" font-family="Arial" font-size="64" font-weight="900" fill="#2bd171">9</text></g>
-<text x="72" y="697" font-family="Arial" font-size="66" font-weight="900" fill="#effff5">MORTAL SHELL</text>
-<text x="72" y="787" font-family="Arial" font-size="30" font-weight="700" fill="#2bd171">ARABIC LOCALIZATION</text>
-<text x="72" y="945" font-family="Arial" font-size="18" fill="#7da98c">ZRO-ZRO / ARABIC LOCALIZATION LIBRARY</text>
-</svg>
