@@ -4,11 +4,23 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="theme-color" content="#020303">
-  <meta name="description" content="ZRo-ZRo - مكتبة احترافية لتعريبات الألعاب العربية بتصميم سريع وحديث">
+  <meta name="color-scheme" content="dark">
+  <meta name="description" content="ZRo-ZRo - مكتبة احترافية وسريعة لتعريبات الألعاب العربية">
+  <meta property="og:type" content="website">
+  <meta property="og:locale" content="ar_AR">
+  <meta property="og:site_name" content="ZRo-ZRo">
+  <meta property="og:title" content="ZRo-ZRo | مكتبة التعريبات">
+  <meta property="og:description" content="مكتبة احترافية لتعريبات الألعاب العربية مع تفاصيل وصور وروابط تحميل.">
+  <meta property="og:url" content="https://zro-zro.github.io/">
+  <meta name="twitter:card" content="summary">
+  <link rel="canonical" href="https://zro-zro.github.io/">
+  <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+  <link rel="dns-prefetch" href="//cdn.jsdelivr.net">
   <title>ZRo-ZRo | مكتبة التعريبات</title>
   <link rel="stylesheet" href="assets/css/style.css">
   <link rel="stylesheet" href="assets/css/refresh.css">
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="manifest" href="site.webmanifest">
 </head>
 <body>
   <div id="demoBanner" class="demo-banner" hidden>وضع العرض التجريبي — فعّل Supabase لتحويل العدادات والإدارة إلى بيانات حقيقية.</div>
@@ -72,14 +84,14 @@
             <h2>مكتبة التعريبات</h2>
             <p>ابحث بسرعة، صفِّ حسب التصنيف، وافتح صفحة كل تعريب لتفاصيل أكثر.</p>
           </div>
-          <span class="count-label" id="resultsCount">—</span>
+          <span class="count-label" id="resultsCount" aria-live="polite">—</span>
         </div>
 
         <div class="toolbar toolbar-modern">
           <div class="search search-modern">
-            <input id="searchInput" type="search" placeholder="ابحث باسم اللعبة أو التعريب..." autocomplete="off">
+            <input id="searchInput" type="search" placeholder="ابحث باسم اللعبة أو التعريب..." autocomplete="off" enterkeyhint="search" aria-label="البحث في التعريبات">
           </div>
-          <div class="filters filters-modern" id="filters">
+          <div class="filters filters-modern" id="filters" aria-label="تصنيفات التعريبات">
             <button class="chip active" data-category="الكل">الكل</button>
           </div>
         </div>
