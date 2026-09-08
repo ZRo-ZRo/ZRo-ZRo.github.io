@@ -3,6 +3,7 @@
 
   const current = document.currentScript;
   const entry = current?.dataset?.entry || '';
+  const version = current?.dataset?.version || '';
   const cfg = window.ZRORO_CONFIG || window.ZERO9_CONFIG || {};
 
   const configured = Boolean(
@@ -11,10 +12,16 @@
     !String(cfg.SUPABASE_ANON_KEY).startsWith('YOUR_')
   );
 
+  function versioned(src) {
+    if (!version || /^https?:\/\//i.test(src)) return src;
+    return `${src}${src.includes('?') ? '&' : '?'}v=${encodeURIComponent(version)}`;
+  }
+
   function loadScript(src) {
+    const finalSrc = versioned(src);
     return new Promise((resolve, reject) => {
       const script = document.createElement('script');
-      script.src = src;
+      script.src = finalSrc;
       script.async = false;
       script.onload = resolve;
       script.onerror = () => reject(new Error(`تعذر تحميل ${src}`));
@@ -32,6 +39,10 @@
     }
 
     await loadScript('assets/js/db.js');
+
+    // Compatibility with old cached database builds during rolling updates.
+    if (!window.ZRoZRoDB && window.Zero9DB) window.ZRoZRoDB = window.Zero9DB;
+
     if (entry) await loadScript(entry);
   }
 
