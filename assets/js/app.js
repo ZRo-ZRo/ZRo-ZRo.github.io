@@ -75,8 +75,8 @@ function buildFilters() {
 
 (async function init(){
   try {
-    if (Zero9DB.isDemo) $('#demoBanner').hidden = false;
-    const raw = await Zero9DB.listLocalizations();
+    if (ZRoZRoDB.isDemo) $('#demoBanner').hidden = false;
+    const raw = await ZRoZRoDB.listLocalizations();
     allItems = raw.slice().sort((a, b) => {
       const f = Number(Boolean(b.featured)) - Number(Boolean(a.featured));
       if (f) return f;
