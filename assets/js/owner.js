@@ -12,13 +12,22 @@ function toast(msg, error=false){
 function esc(v=''){return String(v).replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));}
 function slugify(v=''){return v.trim().toLowerCase().replace(/[^a-z0-9\u0600-\u06ff]+/g,'-').replace(/^-+|-+$/g,'').replace(/-+/g,'-');}
 function setBusy(btn,busy,text){if(!btn)return; if(busy){btn.dataset.oldText=btn.textContent;btn.disabled=true;btn.textContent=text;}else{btn.disabled=false;btn.textContent=btn.dataset.oldText||btn.textContent;delete btn.dataset.oldText;}}
+function validateHttpUrl(value,label){
+  const raw=String(value||'').trim();
+  if(!raw)return '';
+  try{
+    const url=new URL(raw);
+    if(!['http:','https:'].includes(url.protocol))throw new Error();
+    return url.href;
+  }catch(_){throw new Error(`${label} يجب أن يبدأ بـ http:// أو https://`);}
+}
 
 async function requireOwner(){
-  if(Zero9DB.isDemo){
+  if(ZRoZRoDB.isDemo){
     $('#loginView .secure-note').innerHTML='الموقع يعمل الآن بوضع العرض. فعّل Supabase في <b>assets/js/config.js</b> ثم نفّذ <b>supabase/setup.sql</b> لإنشاء بيئة الإنتاج.';
     return false;
   }
-  const ok=await Zero9DB.isOwner();
+  const ok=await ZRoZRoDB.isOwner();
   if(ok){showDashboard();await refresh();return true;}
   showLogin();
   return false;
@@ -29,7 +38,7 @@ function showLogin(){$('#dashboardView').hidden=true;$('#loginView').hidden=fals
 
 async function refresh(){
   try{
-    items=await Zero9DB.listLocalizations();
+    items=await ZRoZRoDB.listLocalizations();
     $('#statGames').textContent=fmt(items.length);
     $('#statViews').textContent=fmt(items.reduce((a,x)=>a+Number(x.views||0),0));
     $('#statDownloads').textContent=fmt(items.reduce((a,x)=>a+Number(x.downloads||0),0));
@@ -79,7 +88,7 @@ function closeEditor(){
 async function uploadOptional(fileInputId,currentUrl,folder){
   const input=$(fileInputId);
   const file=input?.files?.[0];
-  return file ? Zero9DB.uploadMedia(file,folder) : String(currentUrl||'').trim();
+  return file ? ZRoZRoDB.uploadMedia(file,folder) : String(currentUrl||'').trim();
 }
 
 $('#loginForm').addEventListener('submit',async e=>{
@@ -87,9 +96,9 @@ $('#loginForm').addEventListener('submit',async e=>{
   const btn=e.submitter;
   setBusy(btn,true,'جارٍ التحقق...');
   try{
-    await Zero9DB.signIn($('#email').value.trim(),$('#password').value);
-    if(!(await Zero9DB.isOwner())){
-      await Zero9DB.signOut();
+    await ZRoZRoDB.signIn($('#email').value.trim(),$('#password').value);
+    if(!(await ZRoZRoDB.isOwner())){
+      await ZRoZRoDB.signOut();
       throw new Error('هذا الحساب ليس ضمن حسابات Owner المصرح لها.');
     }
     showDashboard();
@@ -98,7 +107,7 @@ $('#loginForm').addEventListener('submit',async e=>{
 });
 
 $('#logoutBtn').addEventListener('click',async()=>{
-  try{await Zero9DB.signOut();showLogin();toast('تم تسجيل الخروج.');}catch(e){toast(e.message,true);}
+  try{await ZRoZRoDB.signOut();showLogin();toast('تم تسجيل الخروج.');}catch(e){toast(e.message,true);}
 });
 $('#refreshBtn').addEventListener('click',refresh);
 $('#addBtn').addEventListener('click',()=>openEditor());
@@ -118,7 +127,7 @@ $('#itemsBody').addEventListener('click',async e=>{
     if(!confirm(`حذف تعريب «${item.title}» نهائيًا؟`))return;
     const btn=del;
     setBusy(btn,true,'جارٍ الحذف...');
-    try{await Zero9DB.deleteLocalization(item.id);toast('تم حذف التعريب.');await refresh();}
+    try{await ZRoZRoDB.deleteLocalization(item.id);toast('تم حذف التعريب.');await refresh();}
     catch(err){toast(err.message||'تعذر حذف التعريب.',true);}
     finally{setBusy(btn,false);}
   }
@@ -129,6 +138,7 @@ $('#editorForm').addEventListener('submit',async e=>{
   const btn=$('#saveBtn');
   setBusy(btn,true,'جارٍ رفع الصور والحفظ...');
   try{
+    const downloadUrl=validateHttpUrl($('#fDownload').value,'رابط التحميل');
     const uploadTasks=[
       uploadOptional('#fCoverFile',$('#fCover').value,'covers'),
       ...[1,2,3,4].map(i=>uploadOptional(`#fShotFile${i}`,$(`#fShot${i}`).value,'screenshots'))
@@ -147,12 +157,12 @@ $('#editorForm').addEventListener('submit',async e=>{
       description:$('#fDescription').value.trim(),
       cover_url:cover,
       screenshots:shots.map(x=>String(x||'').trim()),
-      download_url:$('#fDownload').value.trim(),
+      download_url:downloadUrl,
       featured:$('#fFeatured').checked
     };
 
     if(!payload.title||!payload.slug||!payload.download_url)throw new Error('أكمل الحقول الإلزامية: الاسم وSlug ورابط التحميل.');
-    await Zero9DB.saveLocalization(payload);
+    await ZRoZRoDB.saveLocalization(payload);
     toast('تم حفظ التعريب بنجاح.');
     $('#editorModal').classList.remove('open');
     await refresh();
