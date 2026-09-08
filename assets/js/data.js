@@ -1,4 +1,4 @@
-window.ZERO9_DEMO_DATA = [
+const ZRORO_DEMO_DATA = [
   {
     id: 'demo-mortal-shell', slug: 'mortal-shell', title: 'Mortal Shell', arabic_title: 'مورتال شيل',
     category: 'أكشن / تقمص أدوار', version: '1.2', status: 'مكتمل', featured: true,
@@ -27,3 +27,7 @@ window.ZERO9_DEMO_DATA = [
     download_url: '#', views: 1689, downloads: 502, created_at: '2026-09-01T00:00:00Z'
   }
 ];
+
+window.ZRORO_DEMO_DATA = ZRORO_DEMO_DATA;
+// Backward compatibility for older cached JavaScript.
+window.ZERO9_DEMO_DATA = ZRORO_DEMO_DATA;
