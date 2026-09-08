@@ -14,7 +14,7 @@ window.ZERO9_DEMO_DATA = [
     cover_url: 'assets/demo/cover-2.svg',
     short_description: 'واجهة عربية متكاملة مع معالجة النصوص الطويلة والحوارات.',
     description: 'صفحة تفاصيل متكاملة توضح الصور والإصدار والوصف والعدادات وأزرار التنزيل والمشاركة. البيانات الحقيقية تُدار من Supabase عند تفعيل وضع الإنتاج.',
-    screenshots: ['assets/demo/shot-2.svg','assets/demo/shot-3.svg','assets/demo/shot-4.svg','assets/demo/shot-1.svg'],
+    screenshots: ['assets/demo/shot-1.svg','assets/demo/shot-2.svg','assets/demo/shot-3.svg','assets/demo/shot-4.svg'],
     download_url: '#', views: 2754, downloads: 941, created_at: '2026-08-16T00:00:00Z'
   },
   {
@@ -23,7 +23,7 @@ window.ZERO9_DEMO_DATA = [
     cover_url: 'assets/demo/cover-3.svg',
     short_description: 'تعريب عربي بواجهة تثبيت مخصصة وتجربة استخدام محسنة.',
     description: 'يمكنك إضافة عدد غير محدود من التعريبات، وتحديد المميز منها، وإدارة صور الغلاف ولقطات الشاشة وروابط التنزيل من صفحة الإدارة.',
-    screenshots: ['assets/demo/shot-3.svg','assets/demo/shot-1.svg','assets/demo/shot-4.svg','assets/demo/shot-2.svg'],
+    screenshots: ['assets/demo/shot-1.svg','assets/demo/shot-2.svg','assets/demo/shot-3.svg','assets/demo/shot-4.svg'],
     download_url: '#', views: 1689, downloads: 502, created_at: '2026-09-01T00:00:00Z'
   }
 ];
