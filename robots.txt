@@ -1,0 +1,6 @@
+User-agent: *
+Allow: /
+Disallow: /owner.html
+Disallow: /supabase/
+
+Sitemap: https://zro-zro.github.io/sitemap.xml
