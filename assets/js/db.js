@@ -26,6 +26,15 @@
     if (!client) throw new Error('فعّل Supabase أولاً من assets/js/config.js');
   }
 
+  function setupError(error, area='قاعدة البيانات') {
+    console.error(`[ZRo-ZRo] ${area}:`, error);
+    const code = String(error?.code || '');
+    if (code === 'PGRST202' || code === 'PGRST205' || code === '42P01' || code === '42883') {
+      return new Error('إعداد Supabase غير مكتمل. نفّذ ملف supabase/setup.sql بالكامل ثم أعد المحاولة.');
+    }
+    return error instanceof Error ? error : new Error(error?.message || `تعذر الاتصال بـ ${area}.`);
+  }
+
   function normalizePayload(payload = {}) {
     const screenshots = Array.isArray(payload.screenshots)
       ? payload.screenshots.slice(0, 4).map(v => String(v || '').trim())
@@ -60,7 +69,7 @@
         .select('*')
         .order('featured', { ascending: false })
         .order('created_at', { ascending: false });
-      if (error) throw error;
+      if (error) throw setupError(error, 'مكتبة التعريبات');
       return data || [];
     },
 
@@ -71,26 +80,26 @@
       if (!key) return null;
 
       const first = await client.from('localizations').select('*').eq('slug', key).maybeSingle();
-      if (first.error) throw first.error;
+      if (first.error) throw setupError(first.error, 'تفاصيل التعريب');
       if (first.data) return first.data;
 
       if (!UUID_RE.test(key)) return null;
       const second = await client.from('localizations').select('*').eq('id', key).maybeSingle();
-      if (second.error) throw second.error;
+      if (second.error) throw setupError(second.error, 'تفاصيل التعريب');
       return second.data || null;
     },
 
     async incrementView(id) {
       if (!client || !UUID_RE.test(String(id || ''))) return false;
       const { error } = await client.rpc('increment_localization_views', { row_id: id });
-      if (error) throw error;
+      if (error) throw setupError(error, 'عداد المشاهدات');
       return true;
     },
 
     async incrementDownload(id) {
       if (!client || !UUID_RE.test(String(id || ''))) return false;
       const { error } = await client.rpc('increment_localization_downloads', { row_id: id });
-      if (error) throw error;
+      if (error) throw setupError(error, 'عداد التحميلات');
       return true;
     },
 
@@ -119,7 +128,7 @@
       const session = await this.getSession();
       if (!session) return false;
       const { data, error } = await client.rpc('is_owner');
-      if (error) return false;
+      if (error) throw setupError(error, 'صلاحيات Owner');
       return data === true;
     },
 
@@ -140,7 +149,7 @@
 
       if (result.error) {
         if (result.error.code === '23505') throw new Error('Slug مستخدم بالفعل لتعريب آخر. اختر قيمة مختلفة.');
-        throw result.error;
+        throw setupError(result.error, 'حفظ التعريب');
       }
       return result.data;
     },
@@ -149,7 +158,7 @@
       ensureClient();
       if (!UUID_RE.test(String(id || ''))) throw new Error('معرّف التعريب غير صالح.');
       const { error } = await client.from('localizations').delete().eq('id', id);
-      if (error) throw error;
+      if (error) throw setupError(error, 'حذف التعريب');
     },
 
     async uploadMedia(file, folder = 'images') {
@@ -170,7 +179,7 @@
         cacheControl: '31536000',
         contentType: file.type
       });
-      if (error) throw error;
+      if (error) throw setupError(error, 'رفع الصور');
 
       const { data } = client.storage.from(cfg.MEDIA_BUCKET).getPublicUrl(path);
       if (!data?.publicUrl) throw new Error('تم رفع الصورة لكن تعذر إنشاء رابطها العام.');
