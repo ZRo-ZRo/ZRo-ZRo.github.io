@@ -1,135 +1,4187 @@
-"use strict";
-
 (() => {
-  const content = window.ZRORO_CONTENT || { translations: [], news: [] };
-  const translations = Array.isArray(content.translations) ? content.translations : [];
-  const news = Array.isArray(content.news) ? content.news : [];
-  const $ = (selector) => document.querySelector(selector);
-  const number = new Intl.NumberFormat("ar");
-  const date = new Intl.DateTimeFormat("ar", { dateStyle: "long" });
-  let activeFilter = "all";
+  "use strict";
 
-  function escapeHtml(value = "") {
-    return String(value).replace(/[&<>"']/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[character]);
-  }
+  const API_BASE = location.hostname.endsWith("github.io")
+    ? "https://zro-zrro-memberships.zx87s.chatgpt.site"
+    : location.origin;
+  const TOKEN_KEY = "zro_zrro_session";
+  const VISITOR_KEY = "zro_zrro_visitor_id";
+  const MAX_SOURCE_IMAGE_BYTES = 20 * 1024 * 1024;
+  const MAX_UPLOAD_IMAGE_BYTES = 700 * 1024;
+  const MAX_IMAGE_DIMENSION = 1920;
+  const MAX_TRANSLATION_FILE_BYTES = 512 * 1024 * 1024;
+  const SUPPORT_CHUNK_SIZE = 512 * 1024;
+  const SUPPORT_IMAGE_MAX_SIZE = 5 * 1024 * 1024;
+  const SUPPORT_VIDEO_MAX_SIZE = 25 * 1024 * 1024;
+  const SUPPORTED_IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
+  const DEFAULT_INTERFACE_SETTINGS = Object.freeze({
+    heroTitleScale: 100,
+    sectionTitleScale: 100,
+    cardTitleScale: 100,
+    bodyTextScale: 100,
+    sectionOrder: ["library", "news", "hero"],
+    showNews: true,
+    showVip: true,
+  });
+  const PUBLIC_CACHE_TTL = 24 * 60 * 60 * 1000;
+  const PUBLIC_CACHE_KEYS = { catalog: "zro_zrro_catalog_v1", news: "zro_zrro_news_v1", settings: "zro_zrro_settings_v1" };
+  const DETAIL_CACHE_TTL = 10 * 60 * 1000;
+  const ADMIN_CACHE_TTL = 45 * 1000;
+  const DETAIL_SESSION_PREFIX = "zro_zrro_detail_v2_";
+  const MAX_PREFETCH_CONCURRENCY = 2;
+  const detailCache = new Map();
+  const detailRequests = new Map();
+  const detailPrefetchQueue = [];
+  const queuedDetailReferences = new Set();
+  let activeDetailPrefetches = 0;
+  let detailPrefetchScheduled = false;
+  let detailPrefetchObserver = null;
 
-  function safeUrl(value) {
+  function visitorId() {
+    const valid = (value) => /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value || "");
     try {
-      const url = new URL(String(value || "").trim(), location.href);
-      return ["http:", "https:"].includes(url.protocol) ? url.href : "";
+      const existing = localStorage.getItem(VISITOR_KEY);
+      if (valid(existing)) return existing.toLowerCase();
+      const created = crypto.randomUUID();
+      localStorage.setItem(VISITOR_KEY, created);
+      return created;
     } catch {
-      return "";
+      return crypto.randomUUID();
     }
   }
 
-  function normalize(value = "") {
-    return String(value).toLowerCase().normalize("NFKD").replace(/[\u064B-\u065F\u0670]/g, "").replace(/[إأآ]/g, "ا").replace(/ى/g, "ي").replace(/ة/g, "ه").trim();
+  const VISITOR_ID = visitorId();
+  const state = {
+    token: localStorage.getItem(TOKEN_KEY) || "",
+    user: null,
+    downloads: [],
+    catalog: [],
+    news: [],
+    catalogLoaded: false,
+    newsLoaded: false,
+    filter: "all",
+    adminTranslations: [],
+    adminNews: [],
+    users: [],
+    adminUserQuery: "",
+    adminUserPage: 1,
+    adminUserPageSize: 25,
+    adminUserTotal: 0,
+    adminUserAccountTotal: 0,
+    adminUserTotalPages: 1,
+    adminUserRequest: 0,
+    adminTranslationQuery: "",
+    adminTranslationPage: 1,
+    adminTranslationPageSize: 25,
+    adminNewsQuery: "",
+    adminNewsPage: 1,
+    adminNewsPageSize: 25,
+    adminReports: [],
+    invoices: [],
+    adminInvoices: [],
+    adminInvoiceFilter: "pending",
+    translationRequests: [],
+    adminTranslationRequests: [],
+    activeTranslation: null,
+    comments: [],
+    commentsLoading: false,
+    replyingTo: null,
+    notifications: [],
+    notificationsLoaded: false,
+    unreadNotifications: 0,
+    unreadSupport: 0,
+    unreadAdmin: 0,
+    unreadReports: 0,
+    detailRequest: 0,
+    activeTranslationReference: null,
+    editing: null,
+    editingNews: null,
+    afterAuth: null,
+    interfaceSettings: { ...DEFAULT_INTERFACE_SETTINGS, sectionOrder: [...DEFAULT_INTERFACE_SETTINGS.sectionOrder] },
+    interfaceDraftOrder: [...DEFAULT_INTERFACE_SETTINGS.sectionOrder],
+    supportTickets: [],
+    supportTicketsLoaded: false,
+    supportMessages: [],
+    supportMessageCache: new Map(),
+    activeSupportTicket: null,
+    supportIsAgent: false,
+  };
+  let presenceTimer = null;
+  let onlineTimer = null;
+  let activityTimer = null;
+  let supportPollTimer = null;
+  let adminUserSearchTimer = null;
+  let adminDataLoadedAt = 0;
+  let adminDataRequest = null;
+  let foregroundLoadingCount = 0;
+  let foregroundLoadingTimer = null;
+  const supportObjectUrls = new Set();
+  const adminPreviewMedia = {
+    translationCover: null,
+    translationGallery: [],
+    newsCover: null,
+  };
+
+  const $ = (selector, root = document) => root.querySelector(selector);
+  const $$ = (selector, root = document) => Array.from(root.querySelectorAll(selector));
+  const make = (tag, className, text) => {
+    const node = document.createElement(tag);
+    if (className) node.className = className;
+    if (text !== undefined) node.textContent = text;
+    return node;
+  };
+
+  function beginForegroundLoading(label = "جارٍ التحميل…") {
+    foregroundLoadingCount += 1;
+    const loader = $("#page-loading");
+    $("#page-loading-label").textContent = label;
+    document.body.setAttribute("aria-busy", "true");
+    if (!foregroundLoadingTimer && loader.hidden) {
+      foregroundLoadingTimer = window.setTimeout(() => {
+        foregroundLoadingTimer = null;
+        if (foregroundLoadingCount > 0) loader.hidden = false;
+      }, 160);
+    }
+    let finished = false;
+    return () => {
+      if (finished) return;
+      finished = true;
+      foregroundLoadingCount = Math.max(0, foregroundLoadingCount - 1);
+      if (foregroundLoadingCount) return;
+      if (foregroundLoadingTimer) window.clearTimeout(foregroundLoadingTimer);
+      foregroundLoadingTimer = null;
+      loader.hidden = true;
+      document.body.removeAttribute("aria-busy");
+    };
   }
 
-  function card(item) {
-    const slug = encodeURIComponent(item.slug || "");
-    const cover = safeUrl(item.cover) || "assets/zro-zro-logo.webp";
-    return `<article class="translation-card"><a href="?game=${slug}" data-game="${escapeHtml(item.slug)}"><div class="card-cover"><img src="${escapeHtml(cover)}" alt="غلاف ${escapeHtml(item.title)}" width="720" height="450" loading="lazy" decoding="async"><div class="badges">${item.featured ? '<span class="badge featured">مميز</span>' : ""}${item.isNew ? '<span class="badge">جديد</span>' : ""}<span class="badge">مجاني</span></div></div><div class="card-content"><h2>${escapeHtml(item.title)}</h2><p>${escapeHtml(item.summary || "")}</p><div class="card-meta"><span class="free-label">تحميل مجاني</span><span class="card-arrow">←</span></div></div></a></article>`;
+  function scheduleIdle(task) {
+    if ("requestIdleCallback" in window) {
+      window.requestIdleCallback(task, { timeout: 1500 });
+    } else {
+      window.setTimeout(task, 350);
+    }
   }
 
-  function visibleTranslations() {
-    const query = normalize($("#catalog-search").value);
-    return translations.filter((item) => {
-      if (activeFilter === "featured" && !item.featured) return false;
-      if (activeFilter === "new" && !item.isNew) return false;
-      return !query || normalize(`${item.title || ""} ${item.summary || ""} ${item.genre || ""}`).includes(query);
+  const ICON_MARKUP = {
+    download: '<path d="M12 3v12m0 0 4-4m-4 4-4-4"/><path d="M5 21h14"/>',
+    comments: '<path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4Z"/><path d="M8 9h8M8 13h5"/>',
+    crown: '<path d="m3 7 4 4 5-7 5 7 4-4-2 11H5Z"/><path d="M5 21h14"/>',
+    reply: '<path d="m9 17-6-5 6-5"/><path d="M3 12h10a7 7 0 0 1 7 7"/>',
+    flag: '<path d="M5 21V4m0 0h11l-2 4 2 4H5"/>',
+    trash: '<path d="M4 7h16M9 7V4h6v3m3 0-1 14H7L6 7m4 4v6m4-6v6"/>',
+    upload: '<path d="M12 16V4m0 0-4 4m4-4 4 4"/><path d="M5 20h14"/>',
+    edit: '<path d="m4 20 4.5-1 10-10-3.5-3.5-10 10Z"/><path d="m13.5 6.5 3.5 3.5"/>',
+    user: '<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>',
+    settings: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2h-4V21a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9A1.7 1.7 0 0 0 3 14H2.8v-4H3a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1a1.7 1.7 0 0 0 1.9.3A1.7 1.7 0 0 0 10 3V2.8h4V3a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.2v4H21a1.7 1.7 0 0 0-1.6 1Z"/>',
+    logout: '<path d="M10 17v3H4V4h6v3"/><path d="M14 8l4 4-4 4m4-4H8"/>',
+    save: '<path d="M5 3h12l2 2v16H5Z"/><path d="M8 3v6h8V3M8 21v-7h8v7"/>',
+    bell: '<path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9Z"/><path d="M10 21h4"/>',
+    heart: '<path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1.1-1.1a5.5 5.5 0 0 0-7.8 7.8l1.1 1.1L12 21l7.8-7.5 1.1-1.1a5.5 5.5 0 0 0-.1-7.8Z"/>',
+    news: '<path d="M4 5h16v14H4Z"/><path d="M8 9h8M8 13h8M8 17h5"/>',
+    calendar: '<path d="M6 2v4m12-4v4M3 9h18"/><rect x="3" y="4" width="18" height="17" rx="2"/>',
+    star: '<path d="m12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2-5.6-3-5.6 3 1.1-6.2L3 9.6l6.2-.9Z"/>',
+    shield: '<path d="M12 3 20 6v6c0 5-3.4 8-8 9-4.6-1-8-4-8-9V6Z"/><path d="m9 12 2 2 4-4"/>',
+    receipt: '<path d="M6 3h12v18l-3-2-3 2-3-2-3 2Z"/><path d="M9 8h6M9 12h6M9 16h3"/>',
+    check: '<path d="m5 12 4 4L19 6"/>',
+    close: '<path d="M6 6l12 12M18 6 6 18"/>',
+    eye: '<path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12Z"/><circle cx="12" cy="12" r="2.5"/>',
+    eyeOff: '<path d="m3 3 18 18M10.6 6.2A11 11 0 0 1 12 6c6.5 0 10 6 10 6a17 17 0 0 1-2.1 2.8M6.5 7.2C3.6 9.1 2 12 2 12s3.5 6 10 6c1.2 0 2.3-.2 3.3-.6M9.9 9.9a3 3 0 0 0 4.2 4.2"/>',
+    key: '<circle cx="8" cy="15" r="4"/><path d="m11 12 9-9m-3 3 3 3m-6 0 3 3"/>',
+    gamepad: '<path d="M7 8h10a4 4 0 0 1 3.8 5.2l-1.2 4a2 2 0 0 1-3.3.9L14 16h-4l-2.3 2.1a2 2 0 0 1-3.3-.9l-1.2-4A4 4 0 0 1 7 8Z"/><path d="M7 12v3m-1.5-1.5h3M16 12h.01M18 14h.01"/>',
+    copy: '<rect x="8" y="8" width="11" height="11" rx="2"/><path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3"/>',
+    layout: '<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 9v12"/>',
+    arrowUp: '<path d="m6 15 6-6 6 6"/>',
+    arrowDown: '<path d="m6 9 6 6 6-6"/>',
+    headset: '<path d="M4 13a8 8 0 0 1 16 0"/><path d="M4 13v5a2 2 0 0 0 2 2h2v-7H4Zm16 0v5a2 2 0 0 1-2 2h-2v-7h4Z"/><path d="M16 20c0 1-1.8 2-4 2"/>',
+    send: '<path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/>',
+    usersOnline: '<circle cx="9" cy="8" r="3"/><path d="M3 20a6 6 0 0 1 12 0M16 5a3 3 0 0 1 0 6m1 4a5 5 0 0 1 4 5"/>',
+  };
+
+  function icon(name) {
+    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    svg.setAttribute("viewBox", "0 0 24 24");
+    svg.setAttribute("aria-hidden", "true");
+    svg.classList.add("ui-icon");
+    svg.innerHTML = ICON_MARKUP[name] || ICON_MARKUP.download;
+    return svg;
+  }
+
+  function setIconText(node, iconName, text) {
+    node.classList.add("has-icon");
+    node.replaceChildren(icon(iconName), document.createTextNode(text));
+    return node;
+  }
+
+  function setBadgedButton(node, iconName, text, badge) {
+    node.classList.add("has-icon");
+    node.replaceChildren(icon(iconName), document.createTextNode(text), badge);
+    return node;
+  }
+
+  function makeIconText(tag, className, text, iconName) {
+    return setIconText(make(tag, className), iconName, text);
+  }
+
+  function enhancePasswordInputs() {
+    $$('input[type="password"]').forEach((input) => {
+      if (input.parentElement?.classList.contains("password-control")) return;
+      const wrapper = make("span", "password-control");
+      input.parentNode.insertBefore(wrapper, input);
+      wrapper.append(input);
+      const toggle = make("button", "password-toggle");
+      toggle.type = "button";
+      toggle.setAttribute("aria-label", "إظهار كلمة المرور");
+      toggle.title = "إظهار كلمة المرور";
+      toggle.append(icon("eye"));
+      toggle.addEventListener("click", () => {
+        const visible = input.type === "text";
+        input.type = visible ? "password" : "text";
+        toggle.setAttribute("aria-label", visible ? "إظهار كلمة المرور" : "إخفاء كلمة المرور");
+        toggle.title = visible ? "إظهار كلمة المرور" : "إخفاء كلمة المرور";
+        toggle.replaceChildren(icon(visible ? "eye" : "eyeOff"));
+      });
+      wrapper.append(toggle);
     });
   }
 
-  function renderLibrary() {
-    const list = visibleTranslations();
-    $("#catalog-grid").innerHTML = list.map(card).join("");
-    $("#catalog-empty").hidden = list.length !== 0;
-    $("#library-count").textContent = `${number.format(translations.length)} تعريب`;
-    $("#results-status").textContent = list.length && list.length !== translations.length ? `${number.format(list.length)} نتيجة` : "";
+  async function copyRecoveryCode() {
+    const code = $("#recovery-code-value").textContent.trim();
+    if (!code) return;
+    try {
+      await navigator.clipboard.writeText(code);
+      toast("تم نسخ رمز الاسترداد.");
+    } catch {
+      const selection = window.getSelection();
+      const range = document.createRange();
+      range.selectNodeContents($("#recovery-code-value"));
+      selection.removeAllRanges();
+      selection.addRange(range);
+      toast("حددنا الرمز. انسخه الآن واحفظه في مكان آمن.");
+    }
+  }
+
+  function confirmRecoveryCodeSaved() {
+    closeDialog("recovery-code-dialog");
+    $("#recovery-code-value").textContent = "";
+    if (state.afterAuth === "vip") openVipSupport().catch((error) => toast(error.message, "error"));
+    else if (state.afterAuth === "translation-request") openTranslationRequest().catch((error) => toast(error.message, "error"));
+    else if (state.afterAuth === "support") openSupport().catch((error) => toast(error.message, "error"));
+  }
+
+  async function api(path, options = {}) {
+    const headers = new Headers(options.headers || {});
+    if (state.token) headers.set("Authorization", `Bearer ${state.token}`);
+    if (typeof options.body === "string" && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
+    let response;
+    const method = String(options.method || "GET").toUpperCase();
+    const attempts = method === "GET" ? 2 : 1;
+    for (let attempt = 0; attempt < attempts; attempt += 1) {
+      try {
+        response = await fetch(`${API_BASE}${path}`, { credentials: "include", ...options, headers });
+        break;
+      } catch {
+        if (attempt + 1 < attempts) {
+          await new Promise((resolve) => setTimeout(resolve, 300));
+          continue;
+        }
+        const error = new Error("تعذر الوصول إلى خادم الموقع. أعد المحاولة بعد لحظة.");
+        error.status = 0;
+        throw error;
+      }
+    }
+    let result = {};
+    try { result = await response.json(); } catch { result = {}; }
+    if (!response.ok) {
+      const fallbackMessages = {
+        401: "انتهت جلسة الدخول. سجّل الدخول مجددًا.",
+        403: "ليس لديك صلاحية لتنفيذ هذا الإجراء.",
+        413: "حجم الملف أكبر من الحد المسموح.",
+        429: "تم تنفيذ محاولات كثيرة. انتظر قليلًا ثم أعد المحاولة.",
+        500: "حدث خطأ في الخادم أثناء تنفيذ الطلب.",
+        503: "الخدمة غير متاحة مؤقتًا.",
+      };
+      const error = new Error(result.error || fallbackMessages[response.status] || `تعذر إكمال الطلب (${response.status}).`);
+      error.status = response.status;
+      throw error;
+    }
+    return result;
+  }
+
+  function setSession(result) {
+    detailCache.clear();
+    detailRequests.clear();
+    if (result.token) {
+      state.token = result.token;
+      localStorage.setItem(TOKEN_KEY, result.token);
+    }
+    state.user = result.user;
+    updateHeader();
+    startPresenceTracking();
+    startActivityTracking();
+    prefetchPrivateSurfaces();
+  }
+
+  function clearSession() {
+    detailCache.clear();
+    detailRequests.clear();
+    state.token = "";
+    state.user = null;
+    state.downloads = [];
+    state.invoices = [];
+    state.adminInvoices = [];
+    state.adminTranslations = [];
+    state.adminNews = [];
+    state.users = [];
+    state.adminReports = [];
+    adminDataLoadedAt = 0;
+    adminDataRequest = null;
+    state.translationRequests = [];
+    state.adminTranslationRequests = [];
+    state.afterAuth = null;
+    state.notifications = [];
+    state.notificationsLoaded = false;
+    state.unreadNotifications = 0;
+    state.unreadSupport = 0;
+    state.unreadAdmin = 0;
+    state.unreadReports = 0;
+    state.supportTickets = [];
+    state.supportTicketsLoaded = false;
+    state.supportMessages = [];
+    state.supportMessageCache.clear();
+    state.activeSupportTicket = null;
+    state.supportIsAgent = false;
+    stopPresenceTracking();
+    stopActivityTracking();
+    stopSupportPolling();
+    releaseSupportObjectUrls();
+    localStorage.removeItem(TOKEN_KEY);
+    closeDialog("notifications-dialog");
+    closeDialog("vip-dialog");
+    closeDialog("support-dialog");
+    closeDialog("moderation-dialog");
+    closeDialog("admin-dialog");
+    updateHeader();
+    startPresenceTracking();
+  }
+
+  function updateHeader() {
+    $("#free-membership-button").textContent = state.user ? "حسابي" : "إنشاء حساب مجاني";
+    setIconText($("#account-button"), "user", state.user ? "حسابي" : "دخول");
+    const adminButton = $("#admin-button");
+    const adminBadge = $("#admin-badge");
+    const canModerate = state.user?.tier === "owner" || state.user?.tier === "mod";
+    setBadgedButton(adminButton, state.user?.tier === "mod" ? "flag" : "settings", state.user?.tier === "mod" ? "البلاغات" : "الإدارة", adminBadge);
+    adminButton.hidden = !canModerate;
+    $("#support-button").hidden = !state.user;
+    $("#online-counter").hidden = state.user?.tier !== "owner";
+    $("#notification-button").hidden = !state.user;
+    updateNotificationBadge();
+    updateActivityBadges();
+    renderCatalog();
+    if (state.activeTranslation) renderTranslationDetail();
+  }
+
+  function setBadge(badge, count, visible) {
+    const value = Math.max(0, Number(count) || 0);
+    badge.hidden = !visible || value === 0;
+    badge.textContent = value > 99 ? "99+" : String(value);
+  }
+
+  function updateActivityBadges() {
+    const signedIn = Boolean(state.user);
+    setBadge($("#support-badge"), state.unreadSupport, signedIn);
+    const adminCount = state.user?.tier === "owner" ? state.unreadAdmin : state.unreadReports;
+    setBadge($("#admin-badge"), adminCount, state.user?.tier === "owner" || state.user?.tier === "mod");
+    $("#support-button").setAttribute("aria-label", state.unreadSupport ? `الدعم الفني، ${state.unreadSupport} رسالة جديدة` : "الدعم الفني");
+    $("#admin-button").setAttribute("aria-label", adminCount
+      ? `${state.user?.tier === "mod" ? "البلاغات" : "الإدارة"}، ${adminCount} جديد`
+      : state.user?.tier === "mod" ? "البلاغات" : "الإدارة");
+  }
+
+  function updateNotificationBadge() {
+    const count = Math.max(0, Number(state.unreadNotifications) || 0);
+    const button = $("#notification-button");
+    const badge = $("#notification-badge");
+    badge.hidden = !state.user || count === 0;
+    badge.textContent = count > 99 ? "99+" : String(count);
+    button.setAttribute("aria-label", count ? `الإشعارات، ${count} غير مقروء` : "الإشعارات");
+  }
+
+  function notificationText(notification) {
+    if (notification.type === "news") return `خبر جديد: ${notification.translationTitle}`;
+    if (notification.type === "reply") return `${notification.actorUsername} رد على تعليقك`;
+    if (notification.type === "heart") return `${notification.actorUsername} وضع قلبًا على تعليقك`;
+    return `${notification.actorUsername} أضاف تعليقًا جديدًا`;
+  }
+
+  function renderNotifications() {
+    const list = $("#notifications-list");
+    if (!state.notifications.length) {
+      list.replaceChildren(make("p", "empty-row", "لا توجد إشعارات."));
+      return;
+    }
+    list.replaceChildren(...state.notifications.map((notification) => {
+      const item = make("article", `notification-item${notification.isRead ? "" : " is-unread"}`);
+      const open = make("button", "notification-open");
+      open.type = "button";
+      const symbol = notification.type === "news" ? "news" : notification.type === "heart" ? "heart" : notification.type === "reply" ? "reply" : "comments";
+      const iconBox = make("span", `notification-symbol ${notification.type}`);
+      iconBox.append(icon(symbol));
+      const content = make("span", "notification-content");
+      content.append(
+        make("strong", "", notificationText(notification)),
+        make("span", "", notification.type === "news" ? "أخبار التعريبات" : `في ${notification.translationTitle}`),
+        make("time", "", formatDateTime(notification.createdAt)),
+      );
+      open.append(iconBox, content);
+      open.addEventListener("click", () => {
+        closeDialog("notifications-dialog");
+        if (notification.type === "news") {
+          const target = document.getElementById(`news-${notification.newsId}`);
+          target?.scrollIntoView({ behavior: "smooth", block: "center" });
+          target?.classList.add("is-highlighted");
+          setTimeout(() => target?.classList.remove("is-highlighted"), 1800);
+        } else {
+          openTranslation(notification.translationId);
+        }
+      });
+      const remove = make("button", "notification-delete", "×");
+      remove.type = "button";
+      remove.title = "حذف الإشعار";
+      remove.setAttribute("aria-label", `حذف الإشعار: ${notificationText(notification)}`);
+      remove.addEventListener("click", () => deleteNotification(notification, remove));
+      item.append(open, remove);
+      return item;
+    }));
+  }
+
+  async function deleteNotification(notification, button) {
+    button.disabled = true;
+    try {
+      await api("/api/notifications", {
+        method: "DELETE",
+        body: JSON.stringify({ id: notification.id }),
+      });
+      const wasUnread = !notification.isRead;
+      state.notifications = state.notifications.filter((item) => item.id !== notification.id);
+      if (wasUnread) state.unreadNotifications = Math.max(0, state.unreadNotifications - 1);
+      updateNotificationBadge();
+      renderNotifications();
+    } catch (error) {
+      button.disabled = false;
+      toast(error.message, "error");
+    }
+  }
+
+  async function loadNotifications() {
+    if (!state.token || !state.user) return;
+    const result = await api("/api/notifications");
+    state.notifications = Array.isArray(result.notifications) ? result.notifications : [];
+    state.notificationsLoaded = true;
+    state.unreadNotifications = Number(result.unreadCount) || 0;
+    updateNotificationBadge();
+    if ($("#notifications-dialog").open) renderNotifications();
+  }
+
+  async function openNotifications() {
+    if (!state.token) {
+      showDialog("auth-dialog");
+      return;
+    }
+    if (state.notificationsLoaded) renderNotifications();
+    else $("#notifications-list").replaceChildren(make("p", "empty-row", "جارٍ تحميل الإشعارات…"));
+    showDialog("notifications-dialog");
+    try {
+      await loadNotifications();
+      renderNotifications();
+      if (state.unreadNotifications > 0) {
+        await api("/api/notifications", { method: "PATCH" });
+        state.unreadNotifications = 0;
+        state.notifications.forEach((notification) => { notification.isRead = true; });
+        updateNotificationBadge();
+        renderNotifications();
+      }
+    } catch (error) {
+      $("#notifications-list").replaceChildren(make("p", "empty-row", error.message));
+    }
+  }
+
+  async function loadActivityBadges() {
+    if (!state.user || !state.token) return;
+    const result = await api("/api/activity-badges");
+    state.unreadSupport = Number(result.supportUnread) || 0;
+    state.unreadAdmin = Number(result.adminUnread) || 0;
+    state.unreadReports = Number(result.reportsUnread) || 0;
+    updateActivityBadges();
+  }
+
+  async function markActivityRead(channel) {
+    if (!state.user || !state.token) return;
+    if (channel === "support") state.unreadSupport = 0;
+    if (channel === "admin") state.unreadAdmin = 0;
+    if (channel === "reports") state.unreadReports = 0;
+    updateActivityBadges();
+    await api("/api/activity-badges", { method: "PATCH", body: JSON.stringify({ channel }) });
+  }
+
+  function stopActivityTracking() {
+    if (activityTimer) window.clearInterval(activityTimer);
+    activityTimer = null;
+  }
+
+  function startActivityTracking() {
+    stopActivityTracking();
+    if (!state.user) return;
+    loadActivityBadges().catch(() => {});
+    activityTimer = window.setInterval(() => {
+      if (document.visibilityState === "visible") loadActivityBadges().catch(() => {});
+    }, 15_000);
+  }
+
+  function prefetchPrivateSurfaces() {
+    if (!state.user || !state.token) return;
+    Promise.allSettled([
+      loadNotifications(),
+      prefetchSupportTickets(),
+    ]);
+    if (state.user.tier === "owner" && !adminDataLoadedAt) {
+      scheduleIdle(() => loadAdminData().catch(() => {}));
+    }
+  }
+
+  const SUPPORT_CATEGORY_LABELS = {
+    account: "الحساب وتسجيل الدخول",
+    download: "تحميل أو تثبيت تعريب",
+    vip: "الحساب أو الصلاحيات",
+    translation: "مشكلة داخل تعريب",
+    technical: "مشكلة تقنية في الموقع",
+    other: "مشكلة أخرى",
+  };
+
+  function isSupportAgentClient() {
+    return state.user?.tier === "owner" || state.user?.tier === "mod";
+  }
+
+  function releaseSupportObjectUrls() {
+    supportObjectUrls.forEach((url) => URL.revokeObjectURL(url));
+    supportObjectUrls.clear();
+  }
+
+  function stopSupportPolling() {
+    if (supportPollTimer) window.clearInterval(supportPollTimer);
+    supportPollTimer = null;
+  }
+
+  async function heartbeatPresence() {
+    if (document.visibilityState !== "visible") return;
+    await api("/api/presence", { method: "POST", body: JSON.stringify({ visitorId: VISITOR_ID }) });
+  }
+
+  async function refreshOnlineCount() {
+    if (state.user?.tier !== "owner") return;
+    const result = await api("/api/admin/presence");
+    $("#online-count").textContent = String(Number(result.online) || 0);
+  }
+
+  function stopPresenceTracking() {
+    if (presenceTimer) window.clearInterval(presenceTimer);
+    if (onlineTimer) window.clearInterval(onlineTimer);
+    presenceTimer = null;
+    onlineTimer = null;
+    $("#online-count").textContent = "0";
+  }
+
+  function startPresenceTracking() {
+    stopPresenceTracking();
+    heartbeatPresence().then(() => {
+      if (state.user?.tier === "owner") refreshOnlineCount().catch(() => {});
+    }).catch(() => {});
+    presenceTimer = window.setInterval(() => heartbeatPresence().catch(() => {}), 45_000);
+    if (state.user?.tier === "owner") {
+      onlineTimer = window.setInterval(() => refreshOnlineCount().catch(() => {}), 15_000);
+    }
+  }
+
+  function supportCategoryLabel(category) {
+    return SUPPORT_CATEGORY_LABELS[category] || "دعم فني";
+  }
+
+  function supportFileSize(value) {
+    const size = Number(value) || 0;
+    return size >= 1024 * 1024 ? `${(size / 1024 / 1024).toFixed(1)}MB` : `${Math.max(1, Math.ceil(size / 1024))}KB`;
+  }
+
+  function showSupportPanel(panel) {
+    $("#support-empty").hidden = panel !== "empty";
+    $("#support-create").hidden = panel !== "create";
+    $("#support-chat").hidden = panel !== "chat";
+  }
+
+  function renderSupportTickets() {
+    const list = $("#support-ticket-list");
+    if (!state.supportTickets.length) {
+      list.replaceChildren(make("p", "empty-row compact", state.supportIsAgent ? "لا توجد تذاكر دعم." : "لا توجد تذاكر بعد."));
+      return;
+    }
+    list.replaceChildren(...state.supportTickets.map((ticket) => {
+      const button = make("button", `support-ticket-item${ticket.id === state.activeSupportTicket?.id ? " is-active" : ""}`);
+      button.type = "button";
+      const head = make("span", "support-ticket-item-head");
+      head.append(
+        make("strong", "", supportCategoryLabel(ticket.category)),
+        make("span", `support-ticket-state${ticket.status === "closed" ? " closed" : ""}`, ticket.status === "closed" ? "مغلقة" : "مفتوحة"),
+      );
+      const owner = make("small", `tier-name ${ticket.user.tier}`, `${ticket.user.username} · #${ticket.user.id}`);
+      button.append(head, owner, make("time", "", `${ticket.messageCount} رسالة · ${formatDateTime(ticket.updatedAt)}`));
+      button.addEventListener("click", () => selectSupportTicket(ticket));
+      return button;
+    }));
+  }
+
+  async function loadSupportTickets(render = true) {
+    const result = await api("/api/support/tickets");
+    state.supportIsAgent = Boolean(result.agent);
+    state.supportTickets = Array.isArray(result.tickets) ? result.tickets : [];
+    state.supportTicketsLoaded = true;
+    if (state.activeSupportTicket) {
+      const fresh = state.supportTickets.find((ticket) => ticket.id === state.activeSupportTicket.id);
+      state.activeSupportTicket = fresh || null;
+    }
+    if (render) renderSupportTickets();
+    return state.supportTickets;
+  }
+
+  async function prefetchSupportTickets() {
+    await loadSupportTickets(false);
+    const first = state.activeSupportTicket || state.supportTickets[0];
+    if (!first || state.supportMessageCache.has(first.id)) return;
+    const result = await api(`/api/support/tickets/${first.id}/messages`);
+    state.supportMessageCache.set(first.id, Array.isArray(result.messages) ? result.messages : []);
+  }
+
+  function renderSupportTicketHeader() {
+    const ticket = state.activeSupportTicket;
+    if (!ticket) return;
+    $("#support-ticket-category").textContent = supportCategoryLabel(ticket.category);
+    const owner = $("#support-ticket-owner");
+    owner.className = `tier-name ${ticket.user.tier}`;
+    owner.textContent = `${ticket.user.username} · #${ticket.user.id}`;
+    $("#support-ticket-meta").textContent = `${ticket.status === "open" ? "تذكرة مفتوحة" : "تذكرة مغلقة"} · ${formatDateTime(ticket.createdAt)}`;
+    const status = $("#support-ticket-status");
+    status.textContent = ticket.status === "open" ? "إغلاق التذكرة" : "إعادة فتح التذكرة";
+    status.hidden = ticket.status === "closed" && !state.supportIsAgent;
+    $("#support-message-form").hidden = ticket.status !== "open";
+    $("#support-message-status").textContent = ticket.status === "closed" ? "هذه التذكرة مغلقة." : "";
+  }
+
+  async function hydrateSupportAttachment(message, mount) {
+    if (!message.attachment || message.attachment.expired || !message.attachment.url) return;
+    try {
+      const response = await fetch(message.attachment.url, {
+        headers: { Authorization: `Bearer ${state.token}` },
+        cache: "no-store",
+      });
+      if (!response.ok) throw new Error(response.status === 410 ? "انتهت صلاحية المرفق." : "تعذر فتح المرفق.");
+      const blob = await response.blob();
+      if (!mount.isConnected || state.activeSupportTicket?.id !== message.ticketId) return;
+      const objectUrl = URL.createObjectURL(blob);
+      supportObjectUrls.add(objectUrl);
+      const media = message.attachment.type?.startsWith("video/") ? make("video") : make("img");
+      media.src = objectUrl;
+      if (media.tagName === "VIDEO") {
+        media.controls = true;
+        media.preload = "metadata";
+      } else {
+        media.alt = message.attachment.name;
+        media.loading = "lazy";
+      }
+      mount.replaceChildren(media);
+    } catch (error) {
+      mount.replaceChildren(make("span", "support-attachment-expired", error.message));
+    }
+  }
+
+  function renderSupportMessages(scroll = true) {
+    const list = $("#support-messages");
+    const keepBottom = scroll || list.scrollHeight - list.scrollTop - list.clientHeight < 100;
+    releaseSupportObjectUrls();
+    if (!state.supportMessages.length) {
+      list.replaceChildren(make("p", "empty-row compact", "لا توجد رسائل."));
+      return;
+    }
+    const nodes = state.supportMessages.map((message) => {
+      const row = make("article", `support-message${message.senderUserId === state.user?.id ? " is-mine" : ""}`);
+      const head = make("div", "support-message-head");
+      head.append(
+        make("strong", `tier-name ${message.senderTier}`, message.senderUsername),
+        make("time", "", formatDateTime(message.createdAt)),
+      );
+      row.append(head);
+      if (message.body) row.append(make("p", "", message.body));
+      if (message.attachment) {
+        if (message.attachment.expired || !message.attachment.url) {
+          row.append(make("span", "support-attachment-expired", "انتهت صلاحية المرفق المؤقت."));
+        } else {
+          const media = make("div", "support-media");
+          media.append(make("span", "support-attachment-expired", "جارٍ فتح المرفق الخاص…"));
+          const meta = make("div", "support-attachment-meta");
+          meta.append(
+            make("span", "", message.attachment.name),
+            make("span", "", supportFileSize(message.attachment.size)),
+            make("span", "", `متاح حتى ${formatDateTime(message.attachment.expiresAt)}`),
+          );
+          row.append(media, meta);
+          hydrateSupportAttachment(message, media);
+        }
+      }
+      return row;
+    });
+    list.replaceChildren(...nodes);
+    if (keepBottom) requestAnimationFrame(() => { list.scrollTop = list.scrollHeight; });
+  }
+
+  async function loadSupportMessages(after = 0) {
+    const ticket = state.activeSupportTicket;
+    if (!ticket) return;
+    const result = await api(`/api/support/tickets/${ticket.id}/messages${after ? `?after=${after}` : ""}`);
+    if (state.activeSupportTicket?.id !== ticket.id) return;
+    const rows = Array.isArray(result.messages) ? result.messages : [];
+    if (after) {
+      const existing = new Set(state.supportMessages.map((message) => message.id));
+      const fresh = rows.filter((message) => !existing.has(message.id));
+      if (fresh.length) {
+        state.supportMessages.push(...fresh);
+        state.supportMessageCache.set(ticket.id, [...state.supportMessages]);
+        renderSupportMessages(false);
+      }
+    } else {
+      state.supportMessages = rows;
+      state.supportMessageCache.set(ticket.id, [...rows]);
+      renderSupportMessages();
+    }
+    return rows.length;
+  }
+
+  async function selectSupportTicket(ticket) {
+    state.activeSupportTicket = ticket;
+    const cached = state.supportMessageCache.get(ticket.id);
+    state.supportMessages = cached ? [...cached] : [];
+    renderSupportTickets();
+    renderSupportTicketHeader();
+    showSupportPanel("chat");
+    if (cached) renderSupportMessages();
+    else $("#support-messages").replaceChildren(make("p", "empty-row compact", "جارٍ تحميل المحادثة…"));
+    try {
+      await loadSupportMessages(cached?.at(-1)?.id || 0);
+    } catch (error) {
+      $("#support-messages").replaceChildren(make("p", "empty-row compact", error.message));
+    }
+  }
+
+  function showSupportCreate() {
+    state.activeSupportTicket = null;
+    state.supportMessages = [];
+    releaseSupportObjectUrls();
+    renderSupportTickets();
+    $("#support-ticket-form").reset();
+    $("#support-create-message").textContent = "";
+    showSupportPanel("create");
+  }
+
+  async function pollSupport() {
+    if (!$("#support-dialog").open || !state.user) return;
+    try {
+      await loadSupportTickets();
+      if (state.activeSupportTicket) {
+        renderSupportTicketHeader();
+        const lastId = state.supportMessages.at(-1)?.id || 0;
+        const fresh = await loadSupportMessages(lastId);
+        if (fresh) markActivityRead("support").catch(() => {});
+      }
+    } catch {
+      // The next poll retries without interrupting the current conversation.
+    }
+  }
+
+  async function openSupport() {
+    if (!state.user || !state.token) {
+      showDialog("auth-dialog");
+      return;
+    }
+    $("#support-subtitle").textContent = isSupportAgentClient()
+      ? "صندوق تذاكر الأعضاء الخاص"
+      : "تذاكرك ومحادثاتك الخاصة مع فريق الدعم";
+    if (state.supportTicketsLoaded) renderSupportTickets();
+    else $("#support-ticket-list").replaceChildren(make("p", "empty-row compact", "جارٍ تحميل التذاكر…"));
+    const cachedInitial = state.activeSupportTicket || state.supportTickets[0];
+    if (cachedInitial) {
+      state.activeSupportTicket = cachedInitial;
+      renderSupportTicketHeader();
+      showSupportPanel("chat");
+      const cachedMessages = state.supportMessageCache.get(cachedInitial.id);
+      if (cachedMessages) {
+        state.supportMessages = [...cachedMessages];
+        renderSupportMessages();
+      } else {
+        $("#support-messages").replaceChildren(make("p", "empty-row compact", "جارٍ تحميل المحادثة…"));
+      }
+    } else {
+      showSupportPanel("empty");
+    }
+    showDialog("support-dialog");
+    markActivityRead("support").catch(() => {});
+    try {
+      await loadSupportTickets();
+      const initial = state.activeSupportTicket || state.supportTickets[0];
+      if (initial) await selectSupportTicket(initial);
+      else if (!state.supportIsAgent) showSupportCreate();
+      stopSupportPolling();
+      supportPollTimer = window.setInterval(pollSupport, 5_000);
+    } catch (error) {
+      $("#support-ticket-list").replaceChildren(make("p", "empty-row compact", error.message));
+    }
+  }
+
+  async function createSupportTicket(event) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const submit = $("button[type=submit]", form);
+    submit.disabled = true;
+    $("#support-create-message").textContent = "جارٍ فتح التذكرة…";
+    try {
+      const result = await api("/api/support/tickets", {
+        method: "POST",
+        body: JSON.stringify(Object.fromEntries(new FormData(form))),
+      });
+      await loadSupportTickets();
+      const ticket = state.supportTickets.find((item) => item.id === result.ticket.id) || result.ticket;
+      await selectSupportTicket(ticket);
+      toast("تم فتح التذكرة.");
+    } catch (error) {
+      $("#support-create-message").textContent = error.message;
+    } finally {
+      submit.disabled = false;
+    }
+  }
+
+  function validateSupportAttachment(file) {
+    if (!file) return null;
+    const image = ["image/jpeg", "image/png", "image/webp", "image/gif"].includes(file.type);
+    const video = ["video/mp4", "video/webm", "video/quicktime"].includes(file.type);
+    if (!image && !video) throw new Error("اختر صورة JPG/PNG/WEBP/GIF أو فيديو MP4/WEBM/MOV.");
+    if (image && file.size > SUPPORT_IMAGE_MAX_SIZE) throw new Error("حجم الصورة يتجاوز 5MB.");
+    if (video && file.size > SUPPORT_VIDEO_MAX_SIZE) throw new Error("حجم الفيديو يتجاوز 25MB.");
+    return file;
+  }
+
+  function setSupportUploadProgress(value) {
+    const progress = $("#support-upload-progress");
+    const percent = Math.max(0, Math.min(100, Math.round(value)));
+    progress.hidden = percent === 0;
+    $("span", progress).style.width = `${percent}%`;
+    $("b", progress).textContent = `${percent}%`;
+  }
+
+  async function uploadSupportAttachment(ticketId, file, body) {
+    const started = await api(`/api/support/tickets/${ticketId}/uploads`, {
+      method: "POST",
+      body: JSON.stringify({ name: file.name, type: file.type, size: file.size }),
+    });
+    const uploadId = started.uploadId;
+    try {
+      for (let index = 0; index < started.totalParts; index += 1) {
+        const chunk = file.slice(index * SUPPORT_CHUNK_SIZE, Math.min(file.size, (index + 1) * SUPPORT_CHUNK_SIZE));
+        await api(`/api/support/tickets/${ticketId}/uploads/${uploadId}/part?partNumber=${index + 1}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/octet-stream" },
+          body: chunk,
+        });
+        setSupportUploadProgress(((index + 1) / started.totalParts) * 95);
+      }
+      const completed = await api(`/api/support/tickets/${ticketId}/uploads/${uploadId}/complete`, {
+        method: "POST",
+        body: JSON.stringify({ body }),
+      });
+      setSupportUploadProgress(100);
+      return completed.message;
+    } catch (error) {
+      await api(`/api/support/tickets/${ticketId}/uploads/${uploadId}`, { method: "DELETE" }).catch(() => {});
+      throw error;
+    }
+  }
+
+  async function sendSupportMessage(event) {
+    event.preventDefault();
+    const ticket = state.activeSupportTicket;
+    if (!ticket || ticket.status !== "open") return;
+    const form = event.currentTarget;
+    const submit = $("button[type=submit]", form);
+    const body = form.elements.body.value.trim();
+    let file;
+    try { file = validateSupportAttachment(form.elements.attachment.files?.[0]); } catch (error) {
+      $("#support-message-status").textContent = error.message;
+      return;
+    }
+    if (!body && !file) {
+      $("#support-message-status").textContent = "اكتب رسالة أو اختر مرفقًا.";
+      return;
+    }
+    submit.disabled = true;
+    form.elements.attachment.disabled = true;
+    $("#support-message-status").textContent = file ? "جارٍ رفع المرفق الخاص…" : "جارٍ إرسال الرسالة…";
+    setSupportUploadProgress(file ? 1 : 0);
+    try {
+      const message = file
+        ? await uploadSupportAttachment(ticket.id, file, body)
+        : (await api(`/api/support/tickets/${ticket.id}/messages`, { method: "POST", body: JSON.stringify({ body }) })).message;
+      state.supportMessages.push(message);
+      state.supportMessageCache.set(ticket.id, [...state.supportMessages]);
+      form.reset();
+      $("#support-file-name").textContent = "الصور حتى 5MB، الفيديو حتى 25MB";
+      $("#support-message-status").textContent = "";
+      renderSupportMessages();
+      await loadSupportTickets();
+    } catch (error) {
+      $("#support-message-status").textContent = error.message;
+    } finally {
+      submit.disabled = false;
+      form.elements.attachment.disabled = false;
+      window.setTimeout(() => setSupportUploadProgress(0), 500);
+    }
+  }
+
+  async function toggleSupportTicketStatus() {
+    const ticket = state.activeSupportTicket;
+    if (!ticket) return;
+    const status = ticket.status === "open" ? "closed" : "open";
+    try {
+      await api(`/api/support/tickets/${ticket.id}`, { method: "PATCH", body: JSON.stringify({ status }) });
+      ticket.status = status;
+      renderSupportTicketHeader();
+      renderSupportTickets();
+      toast(status === "closed" ? "تم إغلاق التذكرة." : "تمت إعادة فتح التذكرة.");
+    } catch (error) {
+      toast(error.message, "error");
+    }
+  }
+
+  async function deleteSupportTicket() {
+    const ticket = state.activeSupportTicket;
+    if (!ticket || !confirm(`حذف التذكرة #${ticket.id} ورسائلها ومرفقاتها نهائيًا؟`)) return;
+    try {
+      await api(`/api/support/tickets/${ticket.id}`, { method: "DELETE" });
+      state.supportTickets = state.supportTickets.filter((item) => item.id !== ticket.id);
+      state.supportMessageCache.delete(ticket.id);
+      state.activeSupportTicket = null;
+      state.supportMessages = [];
+      releaseSupportObjectUrls();
+      renderSupportTickets();
+      if (state.supportTickets[0]) await selectSupportTicket(state.supportTickets[0]);
+      else if (state.supportIsAgent) showSupportPanel("empty");
+      else showSupportCreate();
+      toast("تم حذف التذكرة بالكامل.");
+    } catch (error) {
+      toast(error.message, "error");
+    }
+  }
+
+  function showDialog(id) {
+    const dialog = document.getElementById(id);
+    if (dialog && !dialog.open) dialog.showModal();
+  }
+
+  function closeDialog(id) {
+    const dialog = document.getElementById(id);
+    if (dialog?.open) dialog.close();
+  }
+
+  let toastTimer;
+  function toast(message, type = "ok") {
+    const node = $("#toast");
+    node.textContent = message;
+    node.dataset.type = type;
+    node.hidden = false;
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => { node.hidden = true; }, 3500);
+  }
+
+  function normalize(value) {
+    return String(value || "")
+      .normalize("NFKD")
+      .replace(/[\u064b-\u065f\u0670]/g, "")
+      .replace(/[أإآ]/g, "ا")
+      .replace(/ة/g, "ه")
+      .replace(/ى/g, "ي")
+      .toLocaleLowerCase("ar")
+      .trim();
+  }
+
+  function readPublicCache(key) {
+    try {
+      const cached = JSON.parse(localStorage.getItem(key) || "null");
+      if (!cached || !Array.isArray(cached.items) || Date.now() - Number(cached.savedAt) > PUBLIC_CACHE_TTL) {
+        localStorage.removeItem(key);
+        return null;
+      }
+      return cached.items;
+    } catch {
+      localStorage.removeItem(key);
+      return null;
+    }
+  }
+
+  function writePublicCache(key, items) {
+    try {
+      localStorage.setItem(key, JSON.stringify({ savedAt: Date.now(), items }));
+    } catch {
+      // Public cache is an optional speed optimization.
+    }
+  }
+
+  function hydratePublicCache() {
+    const catalog = readPublicCache(PUBLIC_CACHE_KEYS.catalog);
+    const news = readPublicCache(PUBLIC_CACHE_KEYS.news);
+    if (catalog) {
+      state.catalog = catalog;
+      state.catalogLoaded = true;
+    }
+    if (news) {
+      state.news = news;
+      state.newsLoaded = true;
+    }
+    try {
+      const cached = JSON.parse(localStorage.getItem(PUBLIC_CACHE_KEYS.settings) || "null");
+      if (cached?.settings && Date.now() - Number(cached.savedAt) <= PUBLIC_CACHE_TTL) {
+        state.interfaceSettings = normalizeInterfaceSettings(cached.settings);
+      }
+    } catch {
+      localStorage.removeItem(PUBLIC_CACHE_KEYS.settings);
+    }
+    applyInterfaceSettings(state.interfaceSettings);
+  }
+
+  function applyPublicBootstrap(result) {
+    state.catalog = Array.isArray(result.translations) ? result.translations : [];
+    state.news = Array.isArray(result.news) ? result.news : [];
+    state.catalogLoaded = true;
+    state.newsLoaded = true;
+    const settings = normalizeInterfaceSettings(result.settings);
+    applyInterfaceSettings(settings);
+    writePublicCache(PUBLIC_CACHE_KEYS.catalog, state.catalog);
+    writePublicCache(PUBLIC_CACHE_KEYS.news, state.news);
+    cacheInterfaceSettings(settings);
+    renderCatalog();
+    renderNews();
+    if (state.user?.tier === "owner") renderInterfaceForm();
+  }
+
+  async function loadPublicBootstrap() {
+    try {
+      const result = await api("/api/bootstrap");
+      applyPublicBootstrap(result);
+    } catch {
+      await Promise.all([loadInterfaceSettings(), loadCatalog(), loadNews()]);
+    }
+  }
+
+  function normalizeInterfaceSettings(value) {
+    const source = value && typeof value === "object" ? value : DEFAULT_INTERFACE_SETTINGS;
+    const number = (key, minimum, maximum) => {
+      const parsed = Number(source[key]);
+      return Number.isInteger(parsed) && parsed >= minimum && parsed <= maximum
+        ? parsed
+        : DEFAULT_INTERFACE_SETTINGS[key];
+    };
+    const order = Array.isArray(source.sectionOrder) ? source.sectionOrder.map(String) : [];
+    const validOrder = order.length === 3 && new Set(order).size === 3
+      && DEFAULT_INTERFACE_SETTINGS.sectionOrder.every((item) => order.includes(item));
+    return {
+      heroTitleScale: number("heroTitleScale", 70, 150),
+      sectionTitleScale: number("sectionTitleScale", 70, 150),
+      cardTitleScale: number("cardTitleScale", 65, 150),
+      bodyTextScale: number("bodyTextScale", 75, 135),
+      sectionOrder: validOrder && order.join() !== "hero,news,library" ? order : [...DEFAULT_INTERFACE_SETTINGS.sectionOrder],
+      showNews: source.showNews !== false,
+      showVip: source.showVip !== false,
+    };
+  }
+
+  function cacheInterfaceSettings(settings) {
+    try {
+      localStorage.setItem(PUBLIC_CACHE_KEYS.settings, JSON.stringify({ savedAt: Date.now(), settings }));
+    } catch {
+      // The server remains the source of truth when browser storage is unavailable.
+    }
+  }
+
+  function applyInterfaceSettings(value) {
+    const settings = normalizeInterfaceSettings(value);
+    state.interfaceSettings = settings;
+    const root = document.documentElement.style;
+    const hero = settings.heroTitleScale / 100;
+    const section = settings.sectionTitleScale / 100;
+    root.setProperty("--body-font-size", `${(16 * settings.bodyTextScale / 100).toFixed(2)}px`);
+    root.setProperty("--hero-title-min", `${(3.2 * hero).toFixed(3)}rem`);
+    root.setProperty("--hero-title-fluid", `${(6 * hero).toFixed(3)}vw`);
+    root.setProperty("--hero-title-max", `${(5.6 * hero).toFixed(3)}rem`);
+    root.setProperty("--hero-mobile-min", `${(2.8 * hero).toFixed(3)}rem`);
+    root.setProperty("--hero-mobile-fluid", `${(15 * hero).toFixed(3)}vw`);
+    root.setProperty("--hero-mobile-max", `${(4.2 * hero).toFixed(3)}rem`);
+    root.setProperty("--section-title-min", `${(2 * section).toFixed(3)}rem`);
+    root.setProperty("--section-title-fluid", `${(4 * section).toFixed(3)}vw`);
+    root.setProperty("--section-title-max", `${(3 * section).toFixed(3)}rem`);
+    root.setProperty("--card-title-size", `${(1.02 * settings.cardTitleScale / 100).toFixed(3)}rem`);
+    root.setProperty("--preview-hero-size", `${(2 * hero).toFixed(3)}rem`);
+    root.setProperty("--preview-section-size", `${(1.45 * section).toFixed(3)}rem`);
+    const sections = { hero: $(".hero"), news: $("#news"), library: $("#library") };
+    settings.sectionOrder.forEach((key) => sections[key] && $("#top").append(sections[key]));
+    $("#news").hidden = !settings.showNews;
+    $("#vip").hidden = !settings.showVip;
+    const newsLink = $('.main-nav a[href="#news"]');
+    const vipLink = $('.main-nav a[href="#vip"]');
+    if (newsLink) newsLink.hidden = !settings.showNews;
+    if (vipLink) vipLink.hidden = !settings.showVip;
+  }
+
+  async function loadInterfaceSettings(fresh = false) {
+    try {
+      const result = await api(`/api/site-settings${fresh ? `?v=${Date.now()}` : ""}`, { cache: fresh ? "no-store" : "default" });
+      const settings = normalizeInterfaceSettings(result.settings);
+      applyInterfaceSettings(settings);
+      cacheInterfaceSettings(settings);
+      if (state.user?.tier === "owner") renderInterfaceForm();
+    } catch (error) {
+      if (state.user?.tier === "owner") toast(error.message, "error");
+    }
+  }
+
+  function formatDate(value) {
+    if (!value) return "—";
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? "—" : new Intl.DateTimeFormat("ar-OM", { dateStyle: "medium" }).format(date);
+  }
+
+  function formatDateTime(value) {
+    if (!value) return "—";
+    const date = new Date(value);
+    return Number.isNaN(date.getTime())
+      ? "—"
+      : new Intl.DateTimeFormat("ar-OM", { dateStyle: "medium", timeStyle: "short" }).format(date);
+  }
+
+  function toDateTimeLocal(value) {
+    const date = value instanceof Date ? value : new Date(value);
+    if (Number.isNaN(date.getTime())) return "";
+    const pad = (part) => String(part).padStart(2, "0");
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+  }
+
+  function publishedAtIso(value) {
+    const raw = String(value || "").trim();
+    if (!raw) return null;
+    const date = new Date(raw);
+    if (Number.isNaN(date.getTime())) throw new Error("تاريخ النشر غير صالح.");
+    return date.toISOString();
+  }
+
+  function tierLabel(tier) {
+    if (tier === "owner") return "♛ Owner";
+    if (tier === "mod") return "◆ Mod";
+    if (tier === "vip") return "★ VIP";
+    return "● عضو";
+  }
+
+  function canAccessVip() {
+    return state.user?.membership === "vip" || state.user?.tier === "owner";
+  }
+
+  function translationUrl(itemOrSlug, canonical = true) {
+    const slug = typeof itemOrSlug === "string" ? itemOrSlug : itemOrSlug?.slug;
+    if (canonical) return new URL(`https://zro-zro.github.io/translations/${encodeURIComponent(slug)}/`);
+    const url = new URL(location.href);
+    url.searchParams.set("game", slug);
+    url.hash = "";
+    return url;
+  }
+
+  function setTranslationRoute(item) {
+    if (!item?.slug) return;
+    history.pushState({ translation: item.slug }, "", translationUrl(item, false));
+  }
+
+  function clearTranslationRoute() {
+    const url = new URL(location.href);
+    if (!url.searchParams.has("game")) return;
+    url.searchParams.delete("game");
+    history.replaceState({}, "", url);
+  }
+
+  async function copyText(value) {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(value);
+      return;
+    }
+    const input = make("textarea");
+    input.value = value;
+    input.setAttribute("readonly", "");
+    input.style.position = "fixed";
+    input.style.opacity = "0";
+    document.body.append(input);
+    input.select();
+    const copied = document.execCommand("copy");
+    input.remove();
+    if (!copied) throw new Error("تعذر نسخ الرابط.");
+  }
+
+  function syncTranslationFromLocation() {
+    const slug = new URL(location.href).searchParams.get("game");
+    if (!slug) {
+      if ($("#translation-dialog").open) closeDialog("translation-dialog");
+      return;
+    }
+    const item = state.catalog.find((entry) => entry.slug === slug);
+    const activeReference = state.activeTranslationReference;
+    if ($("#translation-dialog").open && (
+      state.activeTranslation?.slug === slug
+      || activeReference === slug
+      || (item && activeReference === String(item.id))
+    )) return;
+    openTranslation(item?.id || slug, { syncUrl: false });
+  }
+
+  function translationAction(item) {
+    if (item.downloadable === false) return { label: "قريبًا", icon: "calendar", locked: true };
+    if (item.access !== "vip") return { label: "تنزيل التعريب", icon: "download", locked: false };
+    return canAccessVip()
+      ? { label: "تنزيل التعريب", icon: "download", locked: false }
+      : { label: "تنزيل التعريب", icon: "download", locked: true };
+  }
+
+  function translationTagNodes(item) {
+    const tags = [];
+    if (item.earlyAccess && item.access === "vip") tags.push(make("span", "translation-tag", "وصول مبكر"));
+    if (item.isNewRelease) tags.push(make("span", "translation-tag new", "جديد"));
+    if (item.hasNewUpdate) tags.push(make("span", "translation-tag update", "تحديث جديد"));
+    if (item.isExperimental) tags.push(make("span", "translation-tag experimental", "تجريبي"));
+    return tags;
+  }
+
+  async function loadNews(fresh = false) {
+    try {
+      const result = await api(`/api/news${fresh ? `?v=${Date.now()}` : ""}`, { cache: fresh ? "no-store" : "default" });
+      state.news = Array.isArray(result.news) ? result.news : [];
+      state.newsLoaded = true;
+      writePublicCache(PUBLIC_CACHE_KEYS.news, state.news);
+      renderNews();
+    } catch (error) {
+      state.newsLoaded = true;
+      if (!state.news.length) $("#news-grid").replaceChildren(make("p", "empty-row", error.message));
+    }
   }
 
   function renderNews() {
-    $("#news-grid").innerHTML = news.map((item) => {
-      let published = "";
-      try { published = item.date ? date.format(new Date(item.date)) : ""; } catch { published = ""; }
-      return `<article class="news-card">${published ? `<time>${escapeHtml(published)}</time>` : ""}<h3>${escapeHtml(item.title)}</h3><p>${escapeHtml(item.body || "")}</p></article>`;
-    }).join("");
-    $("#news-empty").hidden = news.length !== 0;
-  }
-
-  function toast(message) {
-    const element = $("#toast");
-    element.textContent = message;
-    element.classList.add("show");
-    clearTimeout(window.__zroToast);
-    window.__zroToast = setTimeout(() => element.classList.remove("show"), 2400);
-  }
-
-  function openDetail(slug, push = true) {
-    const item = translations.find((entry) => entry.slug === slug);
-    if (!item) {
-      if (slug) toast("التعريب غير موجود.");
+    const grid = $("#news-grid");
+    if (!state.newsLoaded) {
+      grid.replaceChildren(...Array.from({ length: 3 }, () => {
+        const card = make("article", "news-card content-skeleton");
+        card.append(make("span", "skeleton-media"), make("span", "skeleton-lines"));
+        return card;
+      }));
       return;
     }
-    const cover = safeUrl(item.cover) || "assets/zro-zro-logo.webp";
-    const gallery = Array.isArray(item.gallery) ? item.gallery.slice(0, 4).map(safeUrl).filter(Boolean) : [];
-    $("#detail-content").innerHTML = `<div class="detail-grid"><img class="detail-cover" src="${escapeHtml(cover)}" alt="غلاف ${escapeHtml(item.title)}" width="720" height="450"><div class="detail-info"><p class="eyebrow">تعريب مجاني</p><h1>${escapeHtml(item.title)}</h1><p class="lead">${escapeHtml(item.summary || "")}</p><div class="detail-description">${escapeHtml(item.description || item.summary || "")}</div><div class="detail-actions"><button class="button primary" id="download-button" type="button">تنزيل التعريب</button><button class="button" id="share-button" type="button">نسخ الرابط</button></div></div></div>${gallery.length ? `<h2 class="gallery-title">صور التعريب داخل اللعبة</h2><div class="detail-gallery">${gallery.map((src, index) => `<button class="gallery-button" type="button" data-image="${escapeHtml(src)}"><img src="${escapeHtml(src)}" alt="${escapeHtml(item.title)} — الصورة ${index + 1}" width="720" height="405" loading="lazy"><span>الصورة ${index + 1}</span></button>`).join("")}</div>` : ""}`;
-    $("#detail-view").hidden = false;
-    document.body.style.overflow = "hidden";
-    $("#detail-view").scrollTop = 0;
-    if (push) history.pushState({ game: slug }, "", `?game=${encodeURIComponent(slug)}`);
-    $("#download-button").addEventListener("click", () => {
-      const url = safeUrl(item.downloadUrl);
-      if (!url) { toast("رابط التحميل غير متاح حاليًا."); return; }
-      window.open(url, "_blank", "noopener,noreferrer");
+    if (!state.news.length) {
+      grid.replaceChildren(make("p", "empty-row", "لا توجد أخبار منشورة."));
+      return;
+    }
+      grid.replaceChildren(...state.news.map((post, index) => {
+      const card = make("article", `news-card${index === 0 ? " is-latest" : ""}`);
+      card.id = `news-${post.id}`;
+      if (post.coverUrl) {
+        const image = make("img", "news-cover");
+        image.src = post.coverUrl;
+        image.alt = post.title;
+        image.loading = index === 0 ? "eager" : "lazy";
+        image.decoding = "async";
+        image.fetchPriority = index === 0 ? "high" : "low";
+        image.addEventListener("error", () => image.remove(), { once: true });
+        card.append(image);
+      }
+      const content = make("div", "news-content");
+      content.append(
+        makeIconText("time", "news-date", formatDate(post.publishedAt), "news"),
+        make("h3", "", post.title),
+        make("p", "", post.body),
+      );
+      card.append(content);
+      return card;
+    }));
+  }
+
+  async function loadCatalog(fresh = false) {
+    try {
+      const result = await api(`/api/translations${fresh ? `?v=${Date.now()}` : ""}`, { cache: fresh ? "no-store" : "default" });
+      state.catalog = Array.isArray(result.translations) ? result.translations : [];
+      state.catalogLoaded = true;
+      writePublicCache(PUBLIC_CACHE_KEYS.catalog, state.catalog);
+      renderCatalog();
+    } catch (error) {
+      state.catalogLoaded = true;
+      if (!state.catalog.length) {
+        $("#catalog-grid").replaceChildren();
+        $("#results-status").textContent = error.message;
+        $("#empty-state").hidden = false;
+      }
+    }
+  }
+
+  const PROJECT_LABELS = { planned: "مخطط له", translating: "قيد التعريب", testing: "قيد الاختبار", released: "متاح" };
+
+  function refreshLibraryFilters() {
+    if (!$("#genre-filter")) {
+      const toolbar = make("div", "advanced-filters");
+      for (const [id, title] of [["genre", "نوع اللعبة"], ["year", "سنة الإصدار"], ["status", "حالة التعريب"]]) {
+        const label = make("label", "", title);
+        const select = make("select");
+        select.id = `${id}-filter`;
+        select.addEventListener("change", renderCatalog);
+        label.append(select);
+        toolbar.append(label);
+      }
+      $("#catalog-grid").before(toolbar);
+    }
+    for (const item of state.catalog) {
+      if (item.earlyAccess && item.freeAt && Date.parse(item.freeAt) <= Date.now()) item.access = "free";
+    }
+    const choices = {
+      genre: [...new Set(state.catalog.map((item) => item.genre).filter(Boolean))].sort().map((value) => [value, value]),
+      year: [...new Set(state.catalog.map((item) => item.releaseYear).filter(Boolean))].sort((a, b) => b - a).map((value) => [String(value), String(value)]),
+      status: Object.entries(PROJECT_LABELS),
+    };
+    for (const [id, values] of Object.entries(choices)) {
+      const select = $(`#${id}-filter`);
+      const value = select.value;
+      select.replaceChildren(...[["", "الكل"], ...values].map(([key, text]) => { const option = make("option", "", text); option.value = key; return option; }));
+      select.value = values.some(([key]) => key === value) ? value : "";
+    }
+  }
+
+  function projectInfo(item) {
+    const root = make("div", "project-info");
+    const fields = [item.genre, item.releaseYear, PROJECT_LABELS[item.projectStatus]].filter(Boolean);
+    if (fields.length) root.append(make("p", "", fields.join(" · ")));
+    if (item.projectStatus && item.projectStatus !== "released") {
+      const percent = Math.max(0, Math.min(100, Number(item.progress) || 0));
+      root.append(make("span", "", `نسبة الإنجاز: ${percent}%`));
+      const bar = make("progress"); bar.max = 100; bar.value = percent; bar.setAttribute("aria-label", "نسبة إنجاز التعريب"); root.append(bar);
+    }
+    if (item.earlyAccess) root.append(make("p", "", item.freeAt
+      ? `${Date.parse(item.freeAt) <= Date.now() ? "متاح مجانًا منذ" : "متاح مجانًا في"} ${new Date(item.freeAt).toLocaleString("ar")}`
+      : "وصول مبكر لـVIP — موعد الإتاحة المجانية لم يُحدد"));
+    return root;
+  }
+
+  function makeRatingSection(item) {
+    const section = make("section", "detail-section rating-section");
+    section.append(make("h3", "", "تقييم جودة التعريب"));
+    const summary = make("p", "", item.ratingCount ? `★ ${Number(item.ratingAverage).toFixed(1)} من 5 · ${item.ratingCount} تقييم` : "لا توجد تقييمات بعد.");
+    const message = make("p", "", "جارٍ تحميل التقييم…");
+    const controls = make("div", "rating-controls");
+    section.append(summary, controls, message);
+    const paint = (data) => {
+      summary.textContent = data.ratingCount ? `★ ${Number(data.ratingAverage).toFixed(1)} من 5 · ${data.ratingCount} تقييم` : "لا توجد تقييمات بعد.";
+      controls.replaceChildren();
+      message.textContent = data.canRate ? (data.myScore ? `تقييمك الحالي: ${data.myScore} من 5. يمكنك تعديله.` : "اختر تقييمك من نجمة إلى خمس نجوم.") : "التقييم متاح للحسابات التي نزّلت التعريب.";
+      if (!data.canRate) return;
+      for (let score = 1; score <= 5; score++) {
+        const button = make("button", `button ghost${data.myScore === score ? " selected-rating" : ""}`, `${score} ★`);
+        button.type = "button"; button.setAttribute("aria-label", `تقييم ${score} من خمس نجوم`); button.setAttribute("aria-pressed", String(data.myScore === score));
+        button.addEventListener("click", async () => {
+          controls.querySelectorAll("button").forEach((node) => { node.disabled = true; });
+          try {
+            const result = await api(`/api/translations/${item.id}/rating`, { method: "POST", body: JSON.stringify({ score }) });
+            Object.assign(item, { ratingAverage: result.ratingAverage, ratingCount: result.ratingCount });
+            const catalogItem = state.catalog.find((row) => row.id === item.id);
+            if (catalogItem) Object.assign(catalogItem, { ratingAverage: result.ratingAverage, ratingCount: result.ratingCount });
+            if (section.isConnected) { paint(result); renderCatalog(); }
+          } catch (error) { message.textContent = error.message; controls.querySelectorAll("button").forEach((node) => { node.disabled = false; }); }
+        });
+        controls.append(button);
+      }
+    };
+    api(`/api/translations/${item.id}/rating`).then((data) => { if (section.isConnected) paint(data); }).catch((error) => { message.textContent = error.message; });
+    return section;
+  }
+
+  function visibleCatalog() {
+    const query = normalize($("#catalog-search").value);
+    const items = state.catalog.filter((item) => {
+      const matchesFilter = state.filter === "all" || item.access === state.filter;
+      return matchesFilter && (!query || normalize(`${item.title} ${item.description}`).includes(query))
+        && (!$("#genre-filter").value || item.genre === $("#genre-filter").value)
+        && (!$("#year-filter").value || String(item.releaseYear) === $("#year-filter").value)
+        && (!$("#status-filter").value || (item.projectStatus || "released") === $("#status-filter").value);
     });
-    $("#share-button").addEventListener("click", async () => {
-      try { await navigator.clipboard.writeText(location.href); toast("تم نسخ رابط التعريب."); }
-      catch { toast("تعذر نسخ الرابط."); }
+    return items.sort((first, second) => (
+      Number(second.isFeatured) - Number(first.isFeatured)
+      || Number(second.isNewRelease) - Number(first.isNewRelease)
+      || Number(second.hasNewUpdate) - Number(first.hasNewUpdate)
+      || Number(second.isExperimental) - Number(first.isExperimental)
+      || (Number(second.downloadCount) || 0) - (Number(first.downloadCount) || 0)
+      || Number(second.id) - Number(first.id)
+    ));
+  }
+
+  function renderCatalog() {
+    const grid = $("#catalog-grid");
+    if (!state.catalogLoaded) {
+      grid.replaceChildren(...Array.from({ length: 6 }, () => {
+        const card = make("article", "catalog-card content-skeleton");
+        card.append(make("span", "skeleton-media"), make("span", "skeleton-lines"));
+        return card;
+      }));
+      $("#empty-state").hidden = true;
+      $("#results-status").textContent = "جارٍ تحميل التعريبات…";
+      return;
+    }
+    refreshLibraryFilters();
+    const items = visibleCatalog();
+    detailPrefetchObserver?.disconnect();
+    detailPrefetchObserver = null;
+    grid.replaceChildren(...items.filter((item) => item.downloadable !== false).map(makeCatalogCard));
+    const upcoming = items.filter((item) => item.downloadable === false);
+    $("#upcoming-grid").replaceChildren(...upcoming.map(makeCatalogCard));
+    $("#upcoming-section").hidden = !upcoming.length;
+    $("#empty-state").hidden = items.length > 0;
+    $("#results-status").textContent = `${items.length} تعريب`;
+  }
+
+  function makeCatalogCard(item, index) {
+    const card = make("article", "catalog-card");
+    card.dataset.access = item.access;
+    if (item.access === "vip" && !canAccessVip()) card.classList.add("is-vip-dimmed");
+    const cover = make("div", "cover");
+    const accessBadges = make("div", "cover-access-badges");
+    accessBadges.append(make("span", "type-badge", item.access === "vip" ? "VIP" : "مجاني"), ...translationTagNodes(item));
+    cover.append(accessBadges);
+    if (item.isFeatured) cover.append(makeIconText("span", "featured-badge", "مميز", "star"));
+    if (item.coverUrl) {
+      const image = make("img");
+      image.src = item.coverUrl;
+      image.alt = `غلاف ${item.title}`;
+      image.loading = index === 0 ? "eager" : "lazy";
+      image.decoding = "async";
+      image.fetchPriority = index === 0 ? "high" : "low";
+      image.addEventListener("error", () => image.remove(), { once: true });
+      cover.prepend(image);
+    }
+    const body = make("div", "card-body");
+    const top = make("div", "card-title-row");
+    const heading = make("h3");
+    const titleLink = make("a", "card-title-link", item.title);
+    titleLink.href = translationUrl(item).toString();
+    titleLink.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      openTranslation(item.id);
+    });
+    titleLink.addEventListener("focus", () => prefetchTranslation(item.id, true), { once: true });
+    heading.append(titleLink);
+    top.append(heading);
+    const stats = make("div", "card-stats");
+    stats.append(
+      makeIconText("span", "stat-line downloads", `${Number(item.downloadCount) || 0} تحميل`, "download"),
+      makeViewStat(item),
+      makeIconText("span", "stat-line comments-count", `${Number(item.commentCount) || 0} تعليق`, "comments"),
+      makeIconText("time", "stat-line published-date", formatDate(item.publishedAt), "calendar"),
+    );
+    top.append(stats);
+    body.append(top, projectInfo(item));
+    if (item.ratingCount) body.append(make("p", "rating-summary", `★ ${Number(item.ratingAverage).toFixed(1)} من 5 · ${item.ratingCount} تقييم`));
+    if (item.description) body.append(make("p", "card-description", item.description));
+    const action = translationAction(item);
+    const button = makeIconText("button", "card-action", action.label, action.icon);
+    button.classList.toggle("is-locked", action.locked);
+    button.setAttribute("aria-disabled", action.locked ? "true" : "false");
+    button.type = "button";
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      downloadTranslation(item, button);
+    });
+    body.append(button);
+    card.append(cover, body);
+    card.dataset.translationReference = String(item.id);
+    card.addEventListener("click", (event) => {
+      if (event.target.closest("button, a")) return;
+      openTranslation(item.id);
+    });
+    card.addEventListener("pointerenter", () => prefetchTranslation(item.id), { once: true });
+    card.addEventListener("pointerdown", () => prefetchTranslation(item.id, true), { once: true, passive: true });
+    observeTranslationPrefetch(card, item.id);
+    return card;
+  }
+
+  function readSessionTranslation(reference) {
+    if (state.token) return null;
+    try {
+      const key = `${DETAIL_SESSION_PREFIX}${String(reference)}`;
+      const cached = JSON.parse(sessionStorage.getItem(key) || "null");
+      if (!cached?.data || Date.now() - Number(cached.savedAt) > DETAIL_CACHE_TTL) {
+        sessionStorage.removeItem(key);
+        return null;
+      }
+      return cached;
+    } catch {
+      return null;
+    }
+  }
+
+  function writeSessionTranslation(result) {
+    if (state.token || !result?.translation) return;
+    const entry = { savedAt: Date.now(), data: result };
+    const references = [result.translation.id, result.translation.slug].filter(Boolean);
+    references.forEach((reference) => {
+      try { sessionStorage.setItem(`${DETAIL_SESSION_PREFIX}${String(reference)}`, JSON.stringify(entry)); } catch { /* Optional speed cache. */ }
     });
   }
 
-  function closeDetail(push = true) {
-    $("#detail-view").hidden = true;
-    document.body.style.overflow = "";
-    if (push) history.pushState({}, "", `${location.pathname}#library`);
+  function cachedTranslation(reference) {
+    const entry = detailCache.get(String(reference));
+    if (!entry || Date.now() - entry.savedAt > DETAIL_CACHE_TTL) {
+      detailCache.delete(String(reference));
+      const sessionEntry = readSessionTranslation(reference);
+      if (!sessionEntry) return null;
+      detailCache.set(String(reference), sessionEntry);
+      return sessionEntry.data;
+    }
+    return entry.data;
   }
 
-  document.addEventListener("click", (event) => {
-    const link = event.target.closest("[data-game]");
-    if (link) { event.preventDefault(); openDetail(link.dataset.game); }
-    const image = event.target.closest("[data-image]");
-    if (image) {
-      $("#lightbox-image").src = image.dataset.image;
-      $("#lightbox").hidden = false;
+  async function fetchTranslationDetail(reference) {
+    const key = String(reference);
+    const cached = cachedTranslation(key);
+    if (cached) return cached;
+    if (detailRequests.has(key)) return detailRequests.get(key);
+    const request = api(`/api/translations/${encodeURIComponent(key)}`)
+      .then((result) => {
+        const entry = { savedAt: Date.now(), data: result };
+        detailCache.set(key, entry);
+        if (result.translation?.id) detailCache.set(String(result.translation.id), entry);
+        if (result.translation?.slug) detailCache.set(result.translation.slug, entry);
+        writeSessionTranslation(result);
+        return result;
+      })
+      .finally(() => detailRequests.delete(key));
+    detailRequests.set(key, request);
+    return request;
+  }
+
+  function canPrefetchDetails() {
+    const connection = navigator.connection;
+    return !connection?.saveData && !/^(slow-)?2g$/.test(connection?.effectiveType || "");
+  }
+
+  function drainDetailPrefetchQueue() {
+    while (activeDetailPrefetches < MAX_PREFETCH_CONCURRENCY && detailPrefetchQueue.length) {
+      const reference = detailPrefetchQueue.shift();
+      queuedDetailReferences.delete(String(reference));
+      activeDetailPrefetches += 1;
+      fetchTranslationDetail(reference)
+        .catch(() => {})
+        .finally(() => {
+          activeDetailPrefetches -= 1;
+          drainDetailPrefetchQueue();
+        });
+    }
+  }
+
+  function prefetchTranslation(reference, priority = false) {
+    if (!canPrefetchDetails() || cachedTranslation(reference) || detailRequests.has(String(reference))) return;
+    if (priority) {
+      fetchTranslationDetail(reference).catch(() => {});
+      return;
+    }
+    const key = String(reference);
+    if (queuedDetailReferences.has(key)) return;
+    queuedDetailReferences.add(key);
+    detailPrefetchQueue.push(reference);
+    if (!detailPrefetchScheduled) {
+      detailPrefetchScheduled = true;
+      scheduleIdle(() => {
+        detailPrefetchScheduled = false;
+        drainDetailPrefetchQueue();
+      });
+    }
+  }
+
+  function observeTranslationPrefetch(card, reference) {
+    if (!("IntersectionObserver" in window) || !canPrefetchDetails()) return;
+    if (!detailPrefetchObserver) {
+      detailPrefetchObserver = new IntersectionObserver((entries) => {
+        entries.forEach((entry) => {
+          if (!entry.isIntersecting) return;
+          detailPrefetchObserver.unobserve(entry.target);
+          prefetchTranslation(entry.target.dataset.translationReference);
+        });
+      }, { rootMargin: "280px 0px" });
+    }
+    card.dataset.translationReference = String(reference);
+    detailPrefetchObserver.observe(card);
+  }
+
+  function makeViewStat(item) {
+    const node = makeIconText("span", "stat-line view-count", `${Number(item.viewCount) || 0} مشاهدة`, "eye");
+    node.dataset.viewTranslation = String(item.id);
+    return node;
+  }
+
+  const viewRequests = new Map();
+  async function recordTranslationView(id) {
+    if (state.user?.tier === "owner") return;
+    if (viewRequests.has(id)) return viewRequests.get(id);
+    const pending = api(`/api/translations/${id}/view`, {
+      method: "POST", body: JSON.stringify({ visitorId: VISITOR_ID }),
+    }).then(({ viewCount }) => {
+      const count = Number(viewCount) || 0;
+      for (const item of [...state.catalog, ...state.adminTranslations, state.activeTranslation]) {
+        if (item?.id === id) item.viewCount = count;
+      }
+      for (const entry of detailCache.values()) {
+        if (entry.data.translation?.id === id) entry.data.translation.viewCount = count;
+      }
+      $$(`[data-view-translation="${id}"]`).forEach((node) => setIconText(node, "eye", `${count} مشاهدة`));
+    }).finally(() => viewRequests.delete(id));
+    viewRequests.set(id, pending);
+    return pending;
+  }
+
+  async function openTranslation(reference, { syncUrl = true } = {}) {
+    const catalogItem = state.catalog.find((item) => item.id === reference || item.slug === reference);
+    if (syncUrl && catalogItem) setTranslationRoute(catalogItem);
+    state.activeTranslationReference = String(reference);
+    const requestId = ++state.detailRequest;
+    state.replyingTo = null;
+    const detail = $("#translation-detail");
+    const warmResult = cachedTranslation(reference);
+    const finishLoading = warmResult ? () => {} : beginForegroundLoading("جارٍ فتح التعريب…");
+    if (warmResult) {
+      state.activeTranslation = warmResult.translation;
+      state.comments = Array.isArray(warmResult.comments) ? warmResult.comments : [];
+      state.commentsLoading = false;
+      renderTranslationDetail();
+    } else if (catalogItem) {
+      state.activeTranslation = catalogItem;
+      state.comments = [];
+      state.commentsLoading = true;
+      renderTranslationDetail();
+    } else {
+      detail.replaceChildren(make("p", "detail-loading", "جارٍ تحميل التعريب…"));
+    }
+    showDialog("translation-dialog");
+    try {
+      const result = await fetchTranslationDetail(reference);
+      if (requestId !== state.detailRequest || !$("#translation-dialog").open) return;
+      state.activeTranslation = result.translation;
+      state.comments = Array.isArray(result.comments) ? result.comments : [];
+      state.commentsLoading = false;
+      document.title = `${state.activeTranslation.title} | تعريبات ZRo-ZrRo`;
+      renderTranslationDetail();
+      recordTranslationView(state.activeTranslation.id).catch(() => {});
+    } catch (error) {
+      if (requestId !== state.detailRequest || !$("#translation-dialog").open) return;
+      state.commentsLoading = false;
+      if (state.activeTranslation?.id === catalogItem?.id) {
+        renderTranslationDetail();
+        toast(error.message, "error");
+      } else {
+        detail.replaceChildren(make("p", "empty-row", error.message));
+      }
+    } finally {
+      finishLoading();
+    }
+  }
+
+  function renderTranslationDetail() {
+    const item = state.activeTranslation;
+    if (!item) return;
+    const root = $("#translation-detail");
+    const fragment = document.createDocumentFragment();
+
+    const hero = make("section", "detail-hero");
+    const cover = make("div", "detail-cover");
+    if (item.coverUrl) {
+      const image = make("img");
+      image.src = item.coverUrl;
+      image.alt = `صورة ${item.title}`;
+      image.decoding = "async";
+      image.fetchPriority = "high";
+      cover.append(image);
+    }
+    const info = make("div", "detail-info");
+    const badge = make("span", `type-badge detail-badge ${item.access}`, item.access === "vip" ? "VIP" : "مجاني");
+    const badges = make("div", "detail-badges");
+    badges.append(badge, ...translationTagNodes(item));
+    if (item.isFeatured) badges.append(makeIconText("span", "featured-badge detail-featured", "تعريب مميز", "star"));
+    info.append(badges, make("h2", "", item.title));
+    if (item.description) info.append(make("p", "detail-description", item.description));
+    const stats = make("div", "detail-stats");
+    stats.append(
+      makeIconText("span", "stat-line detail-download-count", `${Number(item.downloadCount) || 0} تحميل`, "download"),
+      makeViewStat(item),
+      makeIconText("span", "stat-line detail-comment-count", `${Number(item.commentCount) || state.comments.length || 0} تعليق`, "comments"),
+      makeIconText("time", "stat-line detail-published-date", `نُشر في ${formatDate(item.publishedAt)}`, "calendar"),
+    );
+    info.append(stats);
+    info.append(projectInfo(item));
+    const action = translationAction(item);
+    const download = makeIconText("button", "button primary detail-download", action.label, action.icon);
+    download.classList.toggle("is-locked", action.locked);
+    download.setAttribute("aria-disabled", action.locked ? "true" : "false");
+    download.type = "button";
+    download.addEventListener("click", () => downloadTranslation(item, download));
+    const copyLink = makeIconText("button", "button ghost copy-translation-link", "نسخ رابط التعريب", "copy");
+    copyLink.type = "button";
+    copyLink.addEventListener("click", async () => {
+      try {
+        await copyText(translationUrl(item).toString());
+        toast("تم نسخ رابط التعريب.");
+      } catch (error) {
+        toast(error.message, "error");
+      }
+    });
+    const detailActions = make("div", "detail-actions");
+    detailActions.append(download, copyLink);
+    info.append(detailActions);
+    hero.append(cover, info);
+    fragment.append(hero);
+
+    const gallery = make("section", "detail-section");
+    gallery.append(make("h3", "", "صور داخل اللعبة"));
+    const galleryGrid = make("div", "detail-gallery");
+    const images = Array.isArray(item.galleryUrls) ? item.galleryUrls.slice(0, 4) : [];
+    if (!images.length) {
+      galleryGrid.append(make("p", "empty-row", "لا توجد صور."));
+    } else {
+      images.forEach((url, index) => {
+        const itemNode = make("div", "gallery-item");
+        itemNode.append(make("span", "gallery-label", `الصورة ${index + 1}`));
+        const button = make("button", "gallery-image");
+        button.type = "button";
+        button.setAttribute("aria-label", `تكبير الصورة ${index + 1}`);
+        const image = make("img");
+        image.src = url;
+        image.alt = `${item.title} - صورة ${index + 1}`;
+        image.loading = "lazy";
+        image.decoding = "async";
+        image.fetchPriority = "low";
+        button.append(image);
+        button.addEventListener("click", () => openLightbox(url, image.alt));
+        itemNode.append(button);
+        galleryGrid.append(itemNode);
+      });
+    }
+    gallery.append(galleryGrid);
+    fragment.append(gallery, makeRatingSection(item), makeCommentsSection());
+    root.replaceChildren(fragment);
+  }
+
+  function openLightbox(url, alt) {
+    const image = $("#lightbox-image");
+    image.src = url;
+    image.alt = alt;
+    showDialog("image-dialog");
+  }
+
+  function makeCommentsSection() {
+    const section = make("section", "detail-section comments-section");
+    const heading = make("div", "comments-heading");
+    heading.append(makeIconText("h3", "", "التعليقات", "comments"), make("span", "", String(state.comments.length)));
+    section.append(heading);
+
+    if (state.user) {
+      const form = make("form", "comment-form");
+      const textarea = make("textarea");
+      textarea.name = "body";
+      textarea.rows = 3;
+      textarea.maxLength = 1000;
+      textarea.required = true;
+      textarea.placeholder = state.replyingTo ? `اكتب ردك على ${state.replyingTo.username}` : "اكتب تعليقك";
+      if (state.replyingTo) {
+        const replyContext = make("div", "reply-context");
+        replyContext.append(
+          makeIconText("span", "", `الرد على ${state.replyingTo.username}`, "reply"),
+        );
+        const cancelReply = make("button", "text-action", "إلغاء");
+        cancelReply.type = "button";
+        cancelReply.addEventListener("click", () => {
+          state.replyingTo = null;
+          renderTranslationDetail();
+        });
+        replyContext.append(cancelReply);
+        form.append(replyContext);
+      }
+      const submit = makeIconText("button", "button primary", state.replyingTo ? "إرسال الرد" : "إضافة تعليق", state.replyingTo ? "reply" : "comments");
+      submit.type = "submit";
+      form.append(textarea, submit);
+      form.addEventListener("submit", submitComment);
+      section.append(form);
+    } else {
+      const login = makeIconText("button", "button ghost comment-login", "سجّل الدخول للتعليق", "user");
+      login.type = "button";
+      login.addEventListener("click", () => {
+        closeDialog("translation-dialog");
+        showDialog("auth-dialog");
+      });
+      section.append(login);
+    }
+
+    const list = make("div", "comments-list");
+    if (state.commentsLoading) {
+      list.append(make("p", "empty-row", "جارٍ تحميل التعليقات…"));
+    } else if (!state.comments.length) {
+      list.append(make("p", "empty-row", "لا توجد تعليقات."));
+    } else {
+      const existingIds = new Set(state.comments.map((comment) => comment.id));
+      const children = new Map();
+      state.comments.forEach((comment) => {
+        const parentId = comment.parentId && existingIds.has(comment.parentId) ? comment.parentId : null;
+        if (!children.has(parentId)) children.set(parentId, []);
+        children.get(parentId).push(comment);
+      });
+      (children.get(null) || []).forEach((comment) => list.append(makeCommentThread(comment, children, 0, new Set())));
+    }
+    section.append(list);
+    return section;
+  }
+
+  function makeCommentThread(comment, children, depth, ancestors) {
+    const thread = make("div", "comment-thread");
+    const nextAncestors = new Set(ancestors);
+    if (nextAncestors.has(comment.id)) return thread;
+    nextAncestors.add(comment.id);
+    const row = make("article", `comment-card tier-${comment.author.tier}`);
+    const head = make("div", "comment-head");
+    const author = make("div", "comment-author");
+    author.append(avatarControl(comment.author));
+    author.append(
+      make("strong", "comment-author-name", comment.author.username),
+      make("span", `tier-pill ${comment.author.tier}`, tierLabel(comment.author.tier)),
+    );
+    head.append(author, make("time", "", formatDate(comment.createdAt)));
+    row.append(head, make("p", "comment-body", comment.body));
+    const actions = make("div", "comment-actions");
+    const heart = makeIconText(
+      "button",
+      `text-action heart-action${comment.likedByMe ? " is-liked" : ""}`,
+      String(Number(comment.heartCount) || 0),
+      "heart",
+    );
+    heart.type = "button";
+    heart.setAttribute("aria-label", comment.likedByMe ? "إزالة القلب من التعليق" : "وضع قلب على التعليق");
+    heart.setAttribute("aria-pressed", comment.likedByMe ? "true" : "false");
+    heart.disabled = Boolean(comment.heartBusy || (state.user && !comment.canHeart && !comment.likedByMe));
+    heart.addEventListener("click", () => toggleHeart(comment));
+    actions.append(heart);
+    if (state.user) {
+      const reply = makeIconText("button", "text-action reply-action", "رد", "reply");
+      reply.type = "button";
+      reply.addEventListener("click", () => {
+        state.replyingTo = { id: comment.id, username: comment.author.username };
+        renderTranslationDetail();
+        setTimeout(() => $(".comment-form textarea")?.focus(), 0);
+      });
+      actions.append(reply);
+    }
+    if (comment.canReport || comment.reportedByMe) {
+      const report = makeIconText("button", "text-action report-action", comment.reportedByMe ? "تم التبليغ" : "تبليغ", "flag");
+      report.type = "button";
+      report.disabled = comment.reportedByMe;
+      report.addEventListener("click", () => reportComment(comment));
+      actions.append(report);
+    }
+    if (comment.canDelete) {
+      const remove = makeIconText("button", "text-action delete-action", "حذف", "trash");
+      remove.type = "button";
+      remove.addEventListener("click", () => deleteComment(comment));
+      actions.append(remove);
+    }
+    if (actions.childElementCount) row.append(actions);
+    thread.append(row);
+    const replies = (children.get(comment.id) || []).filter((child) => !nextAncestors.has(child.id));
+    if (replies.length && depth < 20) {
+      const repliesList = make("div", "comment-replies");
+      replies.forEach((reply) => repliesList.append(makeCommentThread(reply, children, depth + 1, nextAncestors)));
+      thread.append(repliesList);
+    }
+    return thread;
+  }
+
+  async function toggleHeart(comment) {
+    if (!state.token) {
+      closeDialog("translation-dialog");
+      showDialog("auth-dialog");
+      return;
+    }
+    if ((!comment.canHeart && !comment.likedByMe) || comment.heartBusy) return;
+    comment.heartBusy = true;
+    renderTranslationDetail();
+    try {
+      const result = await api(`/api/comments/${comment.id}/heart`, {
+        method: comment.likedByMe ? "DELETE" : "POST",
+      });
+      comment.likedByMe = Boolean(result.liked);
+      comment.heartCount = Number(result.heartCount) || 0;
+    } catch (error) {
+      if (error.status === 401) {
+        clearSession();
+        closeDialog("translation-dialog");
+        showDialog("auth-dialog");
+      } else {
+        toast(error.message, "error");
+      }
+    } finally {
+      comment.heartBusy = false;
+      if (state.activeTranslation) renderTranslationDetail();
+    }
+  }
+
+  async function submitComment(event) {
+    event.preventDefault();
+    if (!state.activeTranslation) return;
+    const form = event.currentTarget;
+    const submit = $("button[type=submit]", form);
+    const body = $("textarea", form).value.trim();
+    if (!body) return;
+    submit.disabled = true;
+    try {
+      const result = await api(`/api/translations/${state.activeTranslation.id}/comments`, {
+        method: "POST",
+        body: JSON.stringify({ body, parentId: state.replyingTo?.id || null }),
+      });
+      state.comments.push(result.comment);
+      state.replyingTo = null;
+      updateActiveCommentCount(state.comments.length);
+      renderTranslationDetail();
+    } catch (error) {
+      toast(error.message, "error");
+    } finally {
+      submit.disabled = false;
+    }
+  }
+
+  async function deleteComment(comment) {
+    if (!confirm("حذف هذا التعليق وردوده؟")) return;
+    try {
+      await api(`/api/comments/${comment.id}`, { method: "DELETE" });
+      const removedIds = new Set([comment.id]);
+      let changed = true;
+      while (changed) {
+        changed = false;
+        state.comments.forEach((item) => {
+          if (item.parentId && removedIds.has(item.parentId) && !removedIds.has(item.id)) {
+            removedIds.add(item.id);
+            changed = true;
+          }
+        });
+      }
+      state.comments = state.comments.filter((item) => !removedIds.has(item.id));
+      if (state.replyingTo && removedIds.has(state.replyingTo.id)) state.replyingTo = null;
+      updateActiveCommentCount(state.comments.length);
+      renderTranslationDetail();
+      if (state.user?.role === "admin" || state.user?.role === "moderator") await loadAdminReports();
+      toast("تم حذف التعليق.");
+    } catch (error) {
+      toast(error.message, "error");
+    }
+  }
+
+  function updateActiveCommentCount(count) {
+    if (!state.activeTranslation) return;
+    state.activeTranslation.commentCount = count;
+    const catalogItem = state.catalog.find((item) => item.id === state.activeTranslation.id);
+    if (catalogItem) catalogItem.commentCount = count;
+    renderCatalog();
+  }
+
+  async function reportComment(comment) {
+    if (!confirm("إرسال بلاغ عن هذا التعليق؟")) return;
+    try {
+      await api(`/api/comments/${comment.id}/report`, { method: "POST" });
+      comment.reportedByMe = true;
+      comment.canReport = false;
+      renderTranslationDetail();
+      toast("تم إرسال البلاغ.");
+    } catch (error) {
+      toast(error.message, "error");
+    }
+  }
+
+  async function downloadTranslation(item, button) {
+    if (item.downloadable === false) { toast("هذا التعريب قيد العمل وغير متاح للتنزيل بعد."); return; }
+    if (!state.token && item.access === "vip") {
+      showDialog("auth-dialog");
+      return;
+    }
+    if (item.access === "vip" && !canAccessVip()) {
+      openVipSupport().catch((supportError) => toast(supportError.message, "error"));
+      return;
+    }
+    const downloadWindow = window.open("", "_blank");
+    if (!downloadWindow) {
+      toast("اسمح بالنوافذ المنبثقة لهذا الموقع ثم أعد الضغط على تنزيل.", "error");
+      return;
+    }
+    downloadWindow.document.title = "تجهيز التنزيل";
+    downloadWindow.document.body.dir = "rtl";
+    downloadWindow.document.body.style.cssText = "margin:0;min-height:100vh;display:grid;place-items:center;background:#09090b;color:#f4f4f5;font-family:Tahoma,Arial,sans-serif";
+    downloadWindow.document.body.textContent = "جارٍ إنشاء رابط تنزيل آمن…";
+    button.disabled = true;
+    setIconText(button, "download", "جارٍ التحميل…");
+    try {
+      const result = await api(`/api/translations/${item.id}/download`, { method: "POST" });
+      item.downloadCount = result.downloadCount;
+      if (state.activeTranslation?.id === item.id) state.activeTranslation.downloadCount = result.downloadCount;
+      renderCatalog();
+      if (state.activeTranslation?.id === item.id) renderTranslationDetail();
+      if (!result.url || !/^[A-Za-z0-9_-]{32,128}$/.test(result.proof || "")) {
+        throw new Error("تعذر إنشاء رابط التنزيل الآمن.");
+      }
+      const downloadOrigin = new URL(API_BASE).origin;
+      const receiveReady = (event) => {
+        if (event.origin !== downloadOrigin || event.source !== downloadWindow || event.data?.type !== "zro_zrro-download-ready") return;
+        window.removeEventListener("message", receiveReady);
+        downloadWindow.postMessage({ type: "zro_zrro-download-proof", proof: result.proof }, downloadOrigin);
+      };
+      window.addEventListener("message", receiveReady);
+      window.setTimeout(() => window.removeEventListener("message", receiveReady), 20_000);
+      downloadWindow.location.replace(result.url);
+    } catch (error) {
+      downloadWindow.close();
+      if (error.status === 401) {
+        clearSession();
+        showDialog("auth-dialog");
+      } else if (error.status === 403) {
+        openVipSupport().catch((supportError) => toast(supportError.message, "error"));
+      } else {
+        toast(error.message, "error");
+      }
+    } finally {
+      button.disabled = false;
+      const action = translationAction(item);
+      setIconText(button, action.icon, action.label);
+      button.classList.toggle("is-locked", action.locked);
+      button.setAttribute("aria-disabled", action.locked ? "true" : "false");
+    }
+  }
+
+  async function restoreSession() {
+    if (!state.token) return;
+    try {
+      const result = await api("/api/auth/me");
+      state.user = result.user;
+      state.downloads = result.downloads || [];
+      updateHeader();
+      startPresenceTracking();
+      startActivityTracking();
+      prefetchPrivateSurfaces();
+    } catch {
+      clearSession();
+    }
+  }
+
+  function setAuthTab(tab) {
+    $$('[data-auth-tab]').forEach((button) => button.classList.toggle("is-active", button.dataset.authTab === tab));
+    $("#login-form").hidden = tab !== "login";
+    $("#register-form").hidden = tab !== "register";
+    $("#recover-form").hidden = tab !== "recover";
+    $("#auth-message").textContent = "";
+  }
+
+  function showRecoveryCode(code) {
+    $("#recovery-code-value").textContent = code;
+    showDialog("recovery-code-dialog");
+  }
+
+  async function submitAuth(event, kind) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const submit = $("button[type=submit]", form);
+    const data = Object.fromEntries(new FormData(form));
+    submit.disabled = true;
+    $("#auth-message").textContent = "";
+    try {
+      const result = await api(`/api/auth/${kind}`, { method: "POST", body: JSON.stringify(data) });
+      setSession(result);
+      form.reset();
+      closeDialog("auth-dialog");
+      toast(kind === "login" ? "تم تسجيل الدخول." : "تم إنشاء الحساب.");
+      if (kind === "register" && result.recoveryCode) {
+        showRecoveryCode(result.recoveryCode);
+      } else if (state.afterAuth === "vip") {
+        openVipSupport().catch((error) => toast(error.message, "error"));
+      } else if (state.afterAuth === "translation-request") {
+        openTranslationRequest().catch((error) => toast(error.message, "error"));
+      } else if (state.afterAuth === "support") {
+        openSupport().catch((error) => toast(error.message, "error"));
+      }
+    } catch (error) {
+      $("#auth-message").textContent = error.message;
+    } finally {
+      submit.disabled = false;
+    }
+  }
+
+  async function submitRecovery(event) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const submit = $("button[type=submit]", form);
+    submit.disabled = true;
+    $("#auth-message").textContent = "جارٍ التحقق…";
+    try {
+      await api("/api/auth/recover", { method: "POST", body: JSON.stringify(Object.fromEntries(new FormData(form))) });
+      form.reset();
+      setAuthTab("login");
+      $("#auth-message").textContent = "تم تغيير كلمة المرور وإلغاء الجلسات القديمة. سجّل الدخول بكلمة المرور الجديدة.";
+    } catch (error) {
+      $("#auth-message").textContent = error.message;
+    } finally {
+      submit.disabled = false;
+    }
+  }
+
+  async function openAccount() {
+    if (!state.token) {
+      state.afterAuth = null;
+      showDialog("auth-dialog");
+      return;
+    }
+    if (state.user) renderAccount();
+    else $("#account-summary").replaceChildren(make("p", "empty-row compact", "جارٍ تحميل الحساب…"));
+    showDialog("account-dialog");
+    try {
+      const result = await api("/api/auth/me");
+      state.user = result.user;
+      state.downloads = result.downloads || [];
+      state.invoices = [];
+      updateHeader();
+      renderAccount();
+    } catch (error) {
+      if (error.status === 401) clearSession();
+      toast(error.message, "error");
+    }
+  }
+
+  function renderAccount() {
+    const user = state.user;
+    if (!user) return;
+    renderAccountAvatar();
+    const summary = $("#account-summary");
+    summary.replaceChildren();
+    const items = [
+      ["رقم الحساب", `#${user.id}`],
+      ["اسم المستخدم", user.username],
+      ["البريد الإلكتروني", user.email],
+      ["انتهاء VIP", user.membership === "vip" ? formatDate(user.vipUntil) : "—"],
+    ];
+    for (const [label, value] of items) {
+      const item = make("div", "summary-item");
+      const content = make("strong", label === "اسم المستخدم" ? `tier-name ${user.tier}` : "", value);
+      item.append(make("span", "", label), content);
+      summary.append(item);
+    }
+    const tier = make("div", "summary-item tier-summary");
+    tier.append(make("span", "", "الفئة"), make("strong", `tier-pill ${user.tier}`, tierLabel(user.tier)));
+    summary.append(tier);
+    const form = $("#account-form");
+    form.elements.username.value = user.username;
+    form.elements.email.value = user.email;
+    form.elements.currentPassword.value = "";
+    form.elements.newPassword.value = "";
+    $("#recovery-status").textContent = user.recoveryConfigured
+      ? "لديك رمز استرداد محفوظ. إنشاء رمز جديد سيُلغي الرمز السابق فورًا."
+      : "لا يوجد رمز استرداد محفوظ لهذا الحساب. أنشئه الآن واحتفظ به في مكان آمن.";
+    $("#recovery-code-form").reset();
+    $("#recovery-message").textContent = "";
+    renderHistory();
+    renderInvoiceHistory("#account-invoice-history");
+  }
+
+  function avatarControl(user) {
+    const group = make("div", "avatar-control");
+    const button = make("button", "avatar-button"); button.type = "button";
+    const image = make("img"); image.src = user.avatarUrl || `${API_BASE}/w/avatar-default.svg`; image.alt = `صورة ${user.username}`; image.loading = "lazy"; image.decoding = "async";
+    button.setAttribute("aria-label", `تكبير صورة ${user.username}`);
+    button.append(image); button.addEventListener("click", () => openLightbox(image.src, image.alt)); group.append(button);
+    if (user.avatarVersion && state.user && state.user.id !== user.id) {
+      const report = make("button", "avatar-report", "تبليغ الصورة"); report.type = "button";
+      report.addEventListener("click", async () => {
+        const reason = prompt("ما سبب الإبلاغ عن الصورة؟"); if (!reason) return;
+        report.disabled = true;
+        try { await api(`/api/users/${user.id}/avatar/report`, { method: "POST", body: JSON.stringify({ reason, version: user.avatarVersion }) }); toast("تم إرسال بلاغ الصورة."); }
+        catch (error) { toast(error.message, "error"); report.disabled = false; }
+      }); group.append(report);
+    }
+    return group;
+  }
+
+  function renderAccountAvatar() {
+    const root = $("#account-avatar"); const user = state.user;
+    if (!root || !user) return;
+    root.replaceChildren(avatarControl(user));
+    const message = make("p", "form-message"); message.setAttribute("role", "status");
+    const change = async (method, file) => {
+      root.querySelectorAll("button,input").forEach((node) => { node.disabled = true; });
+      message.textContent = method === "POST" ? "جارٍ تجهيز الصورة ورفعها…" : "جارٍ حذف الصورة…";
+      try {
+        const body = file ? await prepareImage(file) : undefined;
+        const result = await api("/api/auth/avatar", { method, ...(body ? { body, headers: { "Content-Type": "application/octet-stream" } } : {}) });
+        state.user = result.user; detailCache.clear(); renderAccountAvatar(); toast("تم تحديث الصورة.");
+      } catch (error) { message.textContent = error.message; root.querySelectorAll("button,input").forEach((node) => { node.disabled = false; }); }
+    };
+    if (user.canUploadAvatar) {
+      const label = make("label", "button ghost avatar-upload", "اختيار صورة من الجهاز");
+      const input = make("input"); input.type = "file"; input.accept = "image/png,image/jpeg,image/webp,image/gif"; input.className = "avatar-file";
+      input.addEventListener("change", () => { if (input.files?.[0]) change("POST", input.files[0]); }); label.append(input); root.append(label);
+    } else root.append(make("p", "", "الصورة الافتراضية للعضوية المجانية."));
+    if (user.hasAvatar) { const remove = make("button", "button danger", "حذف الصورة"); remove.type = "button"; remove.addEventListener("click", () => { if (confirm("حذف صورتك الشخصية؟")) change("DELETE"); }); root.append(remove); }
+    root.append(message);
+  }
+
+  let auditCursors = [null];
+  let auditNext = null;
+  let auditRequestSequence = 0;
+  async function loadAudit(before) {
+    if (state.user?.tier !== "owner") return;
+    const sequence = ++auditRequestSequence;
+    const root = $("#audit-events"); root.textContent = "جارٍ تحميل السجل…";
+    $("#audit-next").disabled = $("#audit-back").disabled = true;
+    try {
+      const params = new URLSearchParams({ q: $("#audit-search").value, action: $("#audit-action").value });
+      if (before) params.set("before", before);
+      const data = await api(`/api/admin/audit?${params}`);
+      if (sequence !== auditRequestSequence) return;
+      auditNext = data.nextCursor;
+      const value = $("#audit-action").value;
+      $("#audit-action").replaceChildren(...["", ...data.actions].map((action) => { const option = make("option", "", action || "الكل"); option.value = action; return option; }));
+      $("#audit-action").value = value;
+      root.replaceChildren(...data.events.map((event) => {
+        const row = make("article", "audit-row");
+        row.append(make("strong", "", event.action), make("span", "", event.actor_id ? `${event.actor_name} #${event.actor_id}` : "تحديث النظام / الحساب"), make("p", "", `${event.detail || ""}${event.target_id ? ` · #${event.target_id}` : ""}`), make("time", "", formatDateTime(event.created_at)));
+        return row;
+      }));
+      if (!data.events.length) root.append(make("p", "empty-row", "لا توجد أنشطة مطابقة."));
+      $("#audit-back").disabled = auditCursors.length < 2; $("#audit-next").disabled = !auditNext;
+    } catch (error) { if (sequence === auditRequestSequence) root.textContent = error.message; }
+  }
+
+  async function loadAvatarReports() {
+    if (state.user?.tier !== "owner") return;
+    const root = $("#admin-avatar-reports"); root.textContent = "جارٍ تحميل بلاغات الصور…";
+    try {
+      const { reports } = await api("/api/admin/avatar-reports");
+      root.replaceChildren(...reports.map((report) => {
+        const row = make("article", "audit-row");
+        row.append(make("strong", "", `${report.username} #${report.user_id}`), make("span", "", `المبلّغ: ${report.reporter} #${report.reporter_id}`), make("p", "", report.reason));
+        if (report.current_image) row.append(avatarControl({ id: report.user_id, username: report.username, avatarUrl: `${API_BASE}/api/users/${report.user_id}/avatar` }));
+        else row.append(make("p", "", "الصورة المبلّغ عنها تغيّرت أو حُذفت."));
+        const actions = make("div", "form-actions");
+        for (const [action, label] of [["remove", "حذف الصورة"], ["dismiss", "رفض البلاغ"]]) {
+          if (action === "remove" && !report.current_image) continue;
+          const button = make("button", "button ghost", label); button.type = "button";
+          button.addEventListener("click", async () => {
+            if (action === "remove" && !confirm(`حذف صورة ${report.username}؟`)) return;
+            button.disabled = true;
+            try { await api(`/api/admin/avatar-reports/${report.id}`, { method: "PATCH", body: JSON.stringify({ action }) }); await loadAvatarReports(); }
+            catch (error) { toast(error.message, "error"); button.disabled = false; }
+          }); actions.append(button);
+        }
+        row.append(actions); return row;
+      }));
+      if (!reports.length) root.textContent = "لا توجد بلاغات صور معلّقة.";
+    } catch (error) { root.textContent = error.message; }
+  }
+
+  function invoiceStatusLabel(status) {
+    if (status === "approved") return "تمت الموافقة";
+    if (status === "rejected") return "مرفوضة";
+    return "قيد المراجعة";
+  }
+
+  function renderInvoiceHistory(selector) {
+    const list = $(selector);
+    if (!list) return;
+    if (!state.invoices.length) {
+      list.replaceChildren(make("p", "empty-row compact", "لا توجد طلبات."));
+      return;
+    }
+    list.replaceChildren(...state.invoices.map((invoice) => {
+      const row = make("article", `invoice-history-row status-${invoice.status}`);
+      const info = make("div", "invoice-history-info");
+      const number = make("code", "invoice-number", invoice.invoiceNumber);
+      info.append(number, make("time", "", formatDateTime(invoice.createdAt)));
+      if (invoice.reviewNote) info.append(make("p", "invoice-note", invoice.reviewNote));
+      if (invoice.status === "approved" && invoice.approvedVipUntil) {
+        info.append(make("span", "invoice-vip-until", `VIP حتى ${formatDate(invoice.approvedVipUntil)}`));
+      }
+      row.append(info, make("span", `invoice-status ${invoice.status}`, invoiceStatusLabel(invoice.status)));
+      return row;
+    }));
+  }
+
+  async function loadPaypalInvoices() {
+    if (!state.user) {
+      state.invoices = [];
+      return;
+    }
+    const result = await api("/api/paypal-invoices");
+    state.invoices = result.invoices || [];
+    renderInvoiceHistory("#vip-invoice-history");
+    renderInvoiceHistory("#account-invoice-history");
+  }
+
+  async function openVipSupport() {
+    if (!state.user) {
+      state.afterAuth = "support";
+      setAuthTab("login");
+      showDialog("auth-dialog");
+      return;
+    }
+    state.afterAuth = null;
+    await openSupport();
+  }
+
+  function translationRequestStatusLabel(status) {
+    if (status === "approved") return "تمت الموافقة";
+    if (status === "rejected") return "مرفوض";
+    return "قيد المراجعة";
+  }
+
+  function renderTranslationRequestHistory() {
+    const list = $("#translation-request-history");
+    const pending = state.translationRequests.some((item) => item.status === "pending");
+    $("#translation-request-form button[type=submit]").disabled = pending;
+    if (pending) $("#translation-request-message").textContent = "لديك طلب قيد المراجعة. انتظر الموافقة أو الرفض لإرسال طلب جديد.";
+    if (!state.translationRequests.length) {
+      list.replaceChildren(make("p", "empty-row compact", "لم ترسل طلبات بعد."));
+      return;
+    }
+    list.replaceChildren(...state.translationRequests.map((request) => {
+      const row = make("article", "request-history-row");
+      const image = make("img");
+      image.src = request.imageUrl;
+      image.alt = request.gameName;
+      image.loading = "lazy";
+      const info = make("div", "request-history-info");
+      info.append(make("strong", "", request.gameName), make("time", "", formatDateTime(request.createdAt)));
+      row.append(image, info, make("span", `request-status ${request.status}`, translationRequestStatusLabel(request.status)));
+      return row;
+    }));
+  }
+
+  async function loadTranslationRequests() {
+    const result = await api("/api/translation-requests");
+    state.translationRequests = result.requests || [];
+    renderTranslationRequestHistory();
+  }
+
+  async function openTranslationRequest() {
+    if (!state.user) {
+      state.afterAuth = "translation-request";
+      setAuthTab("login");
+      showDialog("auth-dialog");
+      return;
+    }
+    state.afterAuth = null;
+    $("#translation-request-message").textContent = "";
+    showDialog("translation-request-dialog");
+    await loadTranslationRequests();
+  }
+
+  async function submitTranslationRequest(event) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    if (state.translationRequests.some((item) => item.status === "pending")) { toast("انتظر مراجعة طلبك الحالي."); return; }
+    const submit = $("button[type=submit]", form);
+    submit.disabled = true;
+    $("#translation-request-message").textContent = "جارٍ تجهيز الصورة وإرسال الطلب…";
+    try {
+      const selected = form.elements.requestImage.files?.[0];
+      if (!selected) throw new Error("اختر صورة اللعبة من جهازك.");
+      const prepared = await prepareImage(selected);
+      const metadata = new TextEncoder().encode(JSON.stringify({
+        gameName: form.elements.gameName.value,
+        reason: form.elements.reason.value,
+      }));
+      if (metadata.byteLength > 12 * 1024) throw new Error("بيانات الطلب طويلة جدًا.");
+      const metadataLength = new Uint8Array(4);
+      new DataView(metadataLength.buffer).setUint32(0, metadata.byteLength);
+      const body = new Blob([metadataLength, metadata, prepared], { type: "application/octet-stream" });
+      await api("/api/translation-requests", {
+        method: "POST",
+        headers: { "Content-Type": "application/octet-stream" },
+        body,
+      });
+      form.reset();
+      updateFileLabel(form.elements.requestImage);
+      $("#translation-request-message").textContent = "تم إرسال الطلب إلى Owner للمراجعة.";
+      await loadTranslationRequests();
+      if (state.user?.role === "admin") await loadAdminTranslationRequests();
+    } catch (error) {
+      $("#translation-request-message").textContent = error.message;
+    } finally {
+      submit.disabled = state.translationRequests.some((item) => item.status === "pending");
+    }
+  }
+
+  async function submitPaypalInvoice(event) {
+    event.preventDefault();
+    if (!state.user) {
+      closeDialog("vip-dialog");
+      await openVipSupport();
+      return;
+    }
+    const form = event.currentTarget;
+    const submit = $("button[type=submit]", form);
+    const invoiceNumber = String(new FormData(form).get("invoiceNumber") || "").trim();
+    submit.disabled = true;
+    $("#invoice-message").textContent = "جارٍ إرسال الفاتورة…";
+    try {
+      await api("/api/paypal-invoices", {
+        method: "POST",
+        body: JSON.stringify({ invoiceNumber }),
+      });
+      form.reset();
+      $("#invoice-message").textContent = "تم إرسال الفاتورة إلى Owner للمراجعة.";
+      await loadPaypalInvoices();
+    } catch (error) {
+      $("#invoice-message").textContent = error.message;
+    } finally {
+      submit.disabled = false;
+    }
+  }
+
+  function renderHistory() {
+    const list = $("#download-history");
+    if (!state.downloads.length) {
+      list.replaceChildren(make("p", "empty-row", "لا توجد تنزيلات."));
+      return;
+    }
+    list.replaceChildren(...state.downloads.map((download) => {
+      const row = make("div", "history-row");
+      const info = make("div");
+      info.append(make("strong", "", download.title), make("span", "", formatDate(download.downloadedAt)));
+      const actions = make("div", "history-actions");
+      const remove = make("button", "history-remove", "×");
+      remove.type = "button";
+      remove.setAttribute("aria-label", `حذف ${download.title} من سجل التحميلات`);
+      remove.title = "حذف من سجل التحميلات";
+      remove.addEventListener("click", async () => {
+        remove.disabled = true;
+        try {
+          await api(`/api/auth/downloads/${download.id}`, { method: "DELETE" });
+          state.downloads = state.downloads.filter((item) => item.id !== download.id);
+          renderHistory();
+        } catch (error) { remove.disabled = false; toast(error.message, "error"); }
+      });
+      actions.append(make("span", `mini-badge ${download.access}`, download.access === "vip" ? "VIP" : "مجاني"), remove);
+      row.append(info, actions);
+      return row;
+    }));
+  }
+
+  async function updateAccount(event) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const data = Object.fromEntries(new FormData(form));
+    if (!data.newPassword) delete data.newPassword;
+    try {
+      const result = await api("/api/auth/me", { method: "PATCH", body: JSON.stringify(data) });
+      setSession(result);
+      renderAccount();
+      $("#account-message").textContent = "تم الحفظ.";
+    } catch (error) {
+      $("#account-message").textContent = error.message;
+    }
+  }
+
+  async function generateRecoveryCode(event) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const submit = $("button[type=submit]", form);
+    submit.disabled = true;
+    $("#recovery-message").textContent = "";
+    try {
+      const result = await api("/api/auth/recovery-code", {
+        method: "POST",
+        body: JSON.stringify(Object.fromEntries(new FormData(form))),
+      });
+      state.user = result.user;
+      form.reset();
+      renderAccount();
+      showRecoveryCode(result.recoveryCode);
+    } catch (error) {
+      $("#recovery-message").textContent = error.message;
+    } finally {
+      submit.disabled = false;
+    }
+  }
+
+  async function logout() {
+    try { await api("/api/auth/logout", { method: "POST" }); } catch { /* session is cleared locally */ }
+    clearSession();
+    closeDialog("account-dialog");
+    toast("تم تسجيل الخروج.");
+  }
+
+  async function openAdmin() {
+    if (state.user?.tier !== "owner") return;
+    if (adminDataLoadedAt) renderAdminViews();
+    else renderAdminLoading();
+    showDialog("admin-dialog");
+    markActivityRead("admin").catch(() => {});
+    const finishLoading = adminDataLoadedAt ? () => {} : beginForegroundLoading("جارٍ تجهيز لوحة Owner…");
+    try {
+      await loadAdminData();
+    } finally {
+      finishLoading();
+    }
+  }
+
+  async function openModeration() {
+    if (state.user?.tier !== "mod") return;
+    renderAdminReports();
+    showDialog("moderation-dialog");
+    markActivityRead("reports").catch(() => {});
+    await loadAdminReports();
+  }
+
+  function openControlCenter() {
+    if (state.user?.tier === "owner") openAdmin();
+    else if (state.user?.tier === "mod") openModeration();
+  }
+
+  function renderAdminViews() {
+    renderAdminOverview();
+    renderAdminTranslations();
+    renderAdminNews();
+    renderUsers();
+    renderAdminReports();
+    renderAdminInvoices();
+    renderAdminTranslationRequests();
+    renderInterfaceForm();
+    renderTranslationPreview();
+    renderNewsPreview();
+  }
+
+  function renderAdminLoading() {
+    const overview = $("#admin-overview");
+    overview.className = "admin-loading-grid";
+    overview.replaceChildren(...Array.from({ length: 4 }, () => make("span", "admin-skeleton")));
+    ["#admin-translations", "#admin-news", "#admin-invoices", "#admin-users", "#admin-requests", "#admin-reports"].forEach((selector) => {
+      const list = $(selector);
+      if (list && !list.children.length) list.replaceChildren(make("p", "empty-row compact", "جارٍ تحميل البيانات…"));
+    });
+  }
+
+  async function loadAdminData({ fresh = false } = {}) {
+    if (!fresh && adminDataLoadedAt && Date.now() - adminDataLoadedAt < ADMIN_CACHE_TTL) {
+      renderAdminViews();
+      return true;
+    }
+    if (adminDataRequest) return adminDataRequest;
+    adminDataRequest = (async () => {
+    try {
+      const [translationResult, newsResult, userResult, reportResult, requestResult] = await Promise.all([
+        api("/api/admin/translations"),
+        api("/api/admin/news"),
+        api(adminUsersEndpoint()),
+        api("/api/admin/comment-reports"),
+        api("/api/admin/translation-requests"),
+      ]);
+      state.adminTranslations = translationResult.translations || [];
+      state.adminNews = newsResult.news || [];
+      applyAdminUsersResult(userResult);
+      state.adminReports = reportResult.reports || [];
+      state.adminInvoices = [];
+      state.adminTranslationRequests = requestResult.requests || [];
+      adminDataLoadedAt = Date.now();
+      renderAdminViews();
+      return true;
+    } catch (error) {
+      toast(error.message, "error");
+      return false;
+    }
+    })();
+    try {
+      return await adminDataRequest;
+    } finally {
+      adminDataRequest = null;
+    }
+  }
+
+  function adminUsersEndpoint() {
+    const parameters = new URLSearchParams({
+      page: String(state.adminUserPage),
+      pageSize: String(state.adminUserPageSize),
+    });
+    if (state.adminUserQuery) parameters.set("q", state.adminUserQuery);
+    return `/api/admin/users?${parameters}`;
+  }
+
+  function applyAdminUsersResult(result) {
+    const pagination = result.pagination || {};
+    state.users = result.users || [];
+    state.adminUserPage = Math.max(1, Number(pagination.page) || 1);
+    state.adminUserPageSize = Number(pagination.pageSize) || 25;
+    state.adminUserTotal = Math.max(0, Number(pagination.total) || 0);
+    state.adminUserAccountTotal = Math.max(0, Number(pagination.accountTotal) || state.adminUserTotal);
+    state.adminUserTotalPages = Math.max(1, Number(pagination.totalPages) || 1);
+  }
+
+  async function loadAdminUsers() {
+    const requestId = ++state.adminUserRequest;
+    const result = await api(adminUsersEndpoint());
+    if (requestId !== state.adminUserRequest) return;
+    applyAdminUsersResult(result);
+    renderUsers();
+    renderAdminOverview();
+  }
+
+  function adminSearchMatch(item, query, fields) {
+    const normalized = query.trim().toLocaleLowerCase("ar").replace(/^#/, "");
+    if (!normalized) return true;
+    return fields.some((field) => String(item[field] ?? "").toLocaleLowerCase("ar").includes(normalized));
+  }
+
+  function pagedCollection(items, query, fields, pageKey, pageSizeKey) {
+    const filtered = items.filter((item) => adminSearchMatch(item, query, fields));
+    const pageSize = Number(state[pageSizeKey]) || 25;
+    const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+    const page = Math.min(totalPages, Math.max(1, Number(state[pageKey]) || 1));
+    state[pageKey] = page;
+    return {
+      rows: filtered.slice((page - 1) * pageSize, page * pageSize),
+      page,
+      pageSize,
+      total: filtered.length,
+      totalPages,
+    };
+  }
+
+  function paginationSequence(page, totalPages) {
+    const pages = new Set([1, totalPages, page - 2, page - 1, page, page + 1, page + 2]);
+    const valid = [...pages].filter((value) => value >= 1 && value <= totalPages).sort((first, second) => first - second);
+    const sequence = [];
+    valid.forEach((value, index) => {
+      if (index && value - valid[index - 1] > 1) sequence.push("…");
+      sequence.push(value);
+    });
+    return sequence;
+  }
+
+  function renderAdminPagination(selector, model, onPage, onPageSize) {
+    const container = $(selector);
+    const bar = make("nav", "admin-pagination");
+    bar.setAttribute("aria-label", "التنقل بين الصفحات");
+    const summary = make("div", "pagination-summary");
+    const select = make("select", "pagination-size");
+    select.setAttribute("aria-label", "عدد العناصر في الصفحة");
+    [10, 25, 50, 100].forEach((size) => {
+      const option = make("option", "", String(size));
+      option.value = String(size);
+      option.selected = size === model.pageSize;
+      select.append(option);
+    });
+    select.addEventListener("change", () => onPageSize(Number(select.value)));
+    summary.append(document.createTextNode("عرض "), select, document.createTextNode(` من أصل ${model.total}`));
+    const controls = make("div", "pagination-controls");
+    const previous = make("button", "pagination-step", "السابق");
+    previous.type = "button";
+    previous.disabled = model.page <= 1;
+    previous.addEventListener("click", () => onPage(model.page - 1));
+    controls.append(previous);
+    paginationSequence(model.page, model.totalPages).forEach((value) => {
+      if (value === "…") {
+        controls.append(make("span", "pagination-ellipsis", value));
+        return;
+      }
+      const pageButton = make("button", `pagination-page${value === model.page ? " is-active" : ""}`, String(value));
+      pageButton.type = "button";
+      if (value === model.page) pageButton.setAttribute("aria-current", "page");
+      pageButton.addEventListener("click", () => onPage(value));
+      controls.append(pageButton);
+    });
+    const next = make("button", "pagination-step", "التالي");
+    next.type = "button";
+    next.disabled = model.page >= model.totalPages;
+    next.addEventListener("click", () => onPage(model.page + 1));
+    controls.append(next);
+    bar.append(summary, controls);
+    container.replaceChildren(bar);
+  }
+
+  function setAdminTab(tab) {
+    $$('[data-admin-tab]').forEach((button) => button.classList.toggle("is-active", button.dataset.adminTab === tab));
+    $("#admin-translations-panel").hidden = tab !== "translations";
+    $("#admin-news-panel").hidden = tab !== "news";
+    $("#admin-invoices-panel").hidden = true;
+    $("#admin-users-panel").hidden = tab !== "users";
+    $("#admin-requests-panel").hidden = tab !== "requests";
+    $("#admin-reports-panel").hidden = tab !== "requests";
+    $("#admin-interface-panel").hidden = tab !== "interface";
+    $("#admin-audit-panel").hidden = tab !== "interface";
+    if (tab === "interface") { auditCursors = [null]; loadAudit(null); }
+    if (tab === "requests") loadAvatarReports();
+  }
+
+  const INTERFACE_SECTION_LABELS = {
+    hero: ["بطاقات العضويات", "crown"],
+    news: ["أخبار التعريبات", "news"],
+    library: ["مكتبة التعريبات", "download"],
+  };
+
+  function interfaceSettingsFromForm() {
+    const form = $("#interface-form");
+    return normalizeInterfaceSettings({
+      heroTitleScale: Number(form.elements.heroTitleScale.value),
+      sectionTitleScale: Number(form.elements.sectionTitleScale.value),
+      cardTitleScale: Number(form.elements.cardTitleScale.value),
+      bodyTextScale: Number(form.elements.bodyTextScale.value),
+      sectionOrder: [...state.interfaceDraftOrder],
+      showNews: form.elements.showNews.checked,
+      showVip: form.elements.showVip.checked,
+    });
+  }
+
+  function updateInterfaceScaleOutputs() {
+    $$('#interface-form input[type="range"]').forEach((input) => {
+      const output = $(`[data-scale-output="${input.name}"]`);
+      if (output) output.textContent = `${input.value}%`;
+    });
+  }
+
+  function renderInterfaceOrder() {
+    const list = $("#interface-order-list");
+    list.replaceChildren(...state.interfaceDraftOrder.map((key, index) => {
+      const row = make("div", "interface-order-row");
+      const label = make("span", "interface-order-name");
+      const [text, iconName] = INTERFACE_SECTION_LABELS[key];
+      const number = make("b", "", String(index + 1));
+      const labelText = makeIconText("span", "", text, iconName);
+      label.append(number, labelText);
+      const actions = make("span", "interface-order-actions");
+      const up = make("button");
+      const down = make("button");
+      up.type = down.type = "button";
+      up.title = "تحريك القسم للأعلى";
+      down.title = "تحريك القسم للأسفل";
+      up.setAttribute("aria-label", up.title);
+      down.setAttribute("aria-label", down.title);
+      up.append(icon("arrowUp"));
+      down.append(icon("arrowDown"));
+      up.disabled = index === 0;
+      down.disabled = index === state.interfaceDraftOrder.length - 1;
+      up.addEventListener("click", () => moveInterfaceSection(index, -1));
+      down.addEventListener("click", () => moveInterfaceSection(index, 1));
+      actions.append(up, down);
+      row.append(label, actions);
+      return row;
+    }));
+  }
+
+  function moveInterfaceSection(index, direction) {
+    const target = index + direction;
+    if (target < 0 || target >= state.interfaceDraftOrder.length) return;
+    [state.interfaceDraftOrder[index], state.interfaceDraftOrder[target]] = [state.interfaceDraftOrder[target], state.interfaceDraftOrder[index]];
+    renderInterfaceOrder();
+    applyInterfaceSettings(interfaceSettingsFromForm());
+  }
+
+  function renderInterfaceForm(settings = state.interfaceSettings) {
+    const form = $("#interface-form");
+    if (!form) return;
+    const normalized = normalizeInterfaceSettings(settings);
+    form.elements.heroTitleScale.value = normalized.heroTitleScale;
+    form.elements.sectionTitleScale.value = normalized.sectionTitleScale;
+    form.elements.cardTitleScale.value = normalized.cardTitleScale;
+    form.elements.bodyTextScale.value = normalized.bodyTextScale;
+    form.elements.showNews.checked = normalized.showNews;
+    form.elements.showVip.checked = normalized.showVip;
+    state.interfaceDraftOrder = [...normalized.sectionOrder];
+    updateInterfaceScaleOutputs();
+    renderInterfaceOrder();
+  }
+
+  async function persistInterfaceSettings(settings) {
+    const form = $("#interface-form");
+    const submit = $('button[type="submit"]', form);
+    submit.disabled = true;
+    $("#interface-message").textContent = "جارٍ حفظ التخصيص…";
+    try {
+      const result = await api("/api/admin/site-settings", {
+        method: "PATCH",
+        body: JSON.stringify(settings),
+      });
+      const saved = normalizeInterfaceSettings(result.settings);
+      applyInterfaceSettings(saved);
+      cacheInterfaceSettings(saved);
+      renderInterfaceForm(saved);
+      $("#interface-message").textContent = "تم حفظ التخصيص وتطبيقه على الموقع.";
+      toast("تم تحديث الواجهة الرئيسية.");
+    } catch (error) {
+      $("#interface-message").textContent = error.message;
+    } finally {
+      submit.disabled = false;
+    }
+  }
+
+  async function saveInterfaceSettings(event) {
+    event.preventDefault();
+    await persistInterfaceSettings(interfaceSettingsFromForm());
+  }
+
+  async function resetInterfaceSettings() {
+    if (!confirm("استعادة أحجام الخطوط وترتيب الأقسام الافتراضي؟")) return;
+    renderInterfaceForm(DEFAULT_INTERFACE_SETTINGS);
+    applyInterfaceSettings(interfaceSettingsFromForm());
+    await persistInterfaceSettings(interfaceSettingsFromForm());
+  }
+
+  function renderAdminOverview() {
+    $("#admin-overview").className = "admin-overview";
+    const pendingRequests = state.adminTranslationRequests.filter((request) => request.status === "pending").length;
+    const metrics = [
+      ["التعريبات", state.adminTranslations.length, "download", "translations"],
+      ["المستخدمون", state.adminUserAccountTotal, "user", "users"],
+      ["الأخبار", state.adminNews.length, "news", "news"],
+      ["طلبات تعريب", pendingRequests, "gamepad", "requests"],
+    ];
+    $("#admin-overview").replaceChildren(...metrics.map(([label, value, iconName, tab]) => {
+      const card = make("button", "admin-metric");
+      card.type = "button";
+      const symbol = make("span", "admin-metric-icon");
+      symbol.append(icon(iconName));
+      const content = make("span", "admin-metric-content");
+      content.append(make("strong", "", String(value)), make("small", "", label));
+      card.append(symbol, content);
+      card.addEventListener("click", () => setAdminTab(tab));
+      return card;
+    }));
+    const requestsTab = $('[data-admin-tab="requests"]');
+    setIconText(requestsTab, "gamepad", pendingRequests ? `4 الطلبات والبلاغات (${pendingRequests})` : "4 الطلبات والبلاغات");
+  }
+
+  function imageExtension(name) {
+    const dot = name.lastIndexOf(".");
+    return dot > 0 ? name.slice(0, dot) : name;
+  }
+
+  function canvasBlob(canvas, quality) {
+    return new Promise((resolve, reject) => {
+      canvas.toBlob(
+        (blob) => blob ? resolve(blob) : reject(new Error("تعذر تجهيز الصورة.")),
+        "image/webp",
+        quality,
+      );
+    });
+  }
+
+  async function decodeImage(file) {
+    if (typeof createImageBitmap === "function") return createImageBitmap(file);
+    const url = URL.createObjectURL(file);
+    try {
+      const image = new Image();
+      image.decoding = "async";
+      image.src = url;
+      await image.decode();
+      return image;
+    } finally {
+      URL.revokeObjectURL(url);
+    }
+  }
+
+  async function prepareImage(file) {
+    if (!(file instanceof File) || !SUPPORTED_IMAGE_TYPES.has(file.type)) {
+      throw new Error("صيغة الصورة غير مدعومة. استخدم PNG أو JPG أو WEBP أو GIF.");
+    }
+    if (file.size < 1) throw new Error("الصورة فارغة أو غير صالحة.");
+    if (file.size > MAX_SOURCE_IMAGE_BYTES) throw new Error("حجم الصورة الأصلية يتجاوز 20MB.");
+    if (file.type === "image/gif") {
+      if (file.size > MAX_UPLOAD_IMAGE_BYTES) throw new Error("صورة GIF كبيرة جدًا. استخدم GIF أصغر من 700KB.");
+      return file;
+    }
+    if (file.size <= MAX_UPLOAD_IMAGE_BYTES) return file;
+
+    let source;
+    try {
+      source = await decodeImage(file);
+      const sourceWidth = source.width || source.naturalWidth;
+      const sourceHeight = source.height || source.naturalHeight;
+      if (!sourceWidth || !sourceHeight) throw new Error("أبعاد الصورة غير صالحة.");
+      if (sourceWidth * sourceHeight > 50_000_000) throw new Error("أبعاد الصورة كبيرة جدًا.");
+
+      let scale = Math.min(1, MAX_IMAGE_DIMENSION / Math.max(sourceWidth, sourceHeight));
+      let quality = 0.86;
+      let blob = null;
+
+      for (let attempt = 0; attempt < 12; attempt += 1) {
+        const width = Math.max(1, Math.round(sourceWidth * scale));
+        const height = Math.max(1, Math.round(sourceHeight * scale));
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        const context = canvas.getContext("2d", { alpha: true });
+        if (!context) throw new Error("تعذر تجهيز الصورة في هذا المتصفح.");
+        context.imageSmoothingEnabled = true;
+        context.imageSmoothingQuality = "high";
+        context.drawImage(source, 0, 0, width, height);
+        blob = await canvasBlob(canvas, quality);
+        canvas.width = 1;
+        canvas.height = 1;
+        if (blob.size <= MAX_UPLOAD_IMAGE_BYTES) break;
+        if (quality > 0.58) quality -= 0.08;
+        else {
+          scale *= 0.82;
+          quality = 0.78;
+        }
+      }
+
+      if (!blob || blob.size > MAX_UPLOAD_IMAGE_BYTES) {
+        throw new Error("تعذر تقليل حجم الصورة إلى الحد المناسب.");
+      }
+      return new File([blob], `${imageExtension(file.name)}.webp`, {
+        type: "image/webp",
+        lastModified: Date.now(),
+      });
+    } catch (error) {
+      if (error instanceof Error) throw error;
+      throw new Error("تعذر قراءة الصورة أو ضغطها.");
+    } finally {
+      if (source && typeof source.close === "function") source.close();
+    }
+  }
+
+  async function uploadImages(files, onProgress) {
+    const selected = Array.from(files || []);
+    if (!selected.length) return [];
+    if (selected.length > 4) throw new Error("يمكن رفع 4 صور داخل اللعبة كحد أقصى.");
+
+    const uploaded = [];
+    try {
+      for (let index = 0; index < selected.length; index += 1) {
+        onProgress?.(index + 1, selected.length, "prepare");
+        const prepared = await prepareImage(selected[index]);
+        onProgress?.(index + 1, selected.length, "upload");
+        const result = await api("/api/admin/uploads", {
+          method: "POST",
+          headers: { "Content-Type": prepared.type || "application/octet-stream" },
+          body: prepared,
+        });
+        const saved = result.files?.[0];
+        if (!saved?.key) throw new Error("لم يُرجع الخادم نتيجة صحيحة لرفع الصورة.");
+        uploaded.push(saved);
+      }
+      return uploaded;
+    } catch (error) {
+      await cleanupImages(uploaded.map((file) => file.key));
+      throw error;
+    }
+  }
+
+  async function cleanupImages(keys) {
+    if (!keys.length) return;
+    try {
+      await api("/api/admin/uploads", {
+        method: "DELETE",
+        body: JSON.stringify({ keys }),
+      });
+    } catch {
+      // Cleanup is best effort; the original error remains the useful message.
+    }
+  }
+
+  function formatBytes(bytes) {
+    if (!Number.isFinite(bytes) || bytes < 1) return "0 MB";
+    if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(bytes >= 100 * 1024 * 1024 ? 0 : 1)} MB`;
+    return `${Math.ceil(bytes / 1024)} KB`;
+  }
+
+  async function uploadTranslationPart(session, partNumber, chunk) {
+    const query = new URLSearchParams({
+      key: session.key,
+      uploadId: session.uploadId,
+      partNumber: String(partNumber),
+    });
+    let lastError = null;
+    for (let attempt = 1; attempt <= 3; attempt += 1) {
+      try {
+        const headers = new Headers({ "Content-Type": "application/octet-stream" });
+        if (state.token) headers.set("Authorization", `Bearer ${state.token}`);
+        const response = await fetch(`${API_BASE}/api/admin/files/part?${query}`, {
+          method: "POST",
+          headers,
+          body: chunk,
+        });
+        let result = {};
+        try { result = await response.json(); } catch { result = {}; }
+        if (!response.ok) {
+          const error = new Error(result.error || `تعذر رفع جزء الملف (${response.status}).`);
+          error.status = response.status;
+          throw error;
+        }
+        if (!result.etag || result.partNumber !== partNumber) throw new Error("لم يُحفظ جزء الملف بصورة صحيحة.");
+        return result;
+      } catch (error) {
+        lastError = error;
+        if (attempt < 3) await new Promise((resolve) => setTimeout(resolve, attempt * 600));
+      }
+    }
+    throw lastError || new Error("تعذر رفع جزء الملف.");
+  }
+
+  async function uploadTranslationFile(file, onProgress) {
+    if (!(file instanceof File) || file.size < 1) throw new Error("اختر ملف تعريب صالحًا.");
+    if (file.size > MAX_TRANSLATION_FILE_BYTES) throw new Error("حجم ملف التعريب يتجاوز 512MB.");
+    const session = await api("/api/admin/files/start", {
+      method: "POST",
+      body: JSON.stringify({ name: file.name, size: file.size, type: file.type }),
+    });
+    let completed = false;
+    try {
+      const parts = [];
+      const partSize = Number(session.partSize);
+      if (!Number.isInteger(partSize) || partSize < 5 * 1024 * 1024) throw new Error("إعداد رفع الملف غير صالح.");
+      const totalParts = Math.ceil(file.size / partSize);
+      for (let index = 0; index < totalParts; index += 1) {
+        const start = index * partSize;
+        const end = Math.min(start + partSize, file.size);
+        const part = await uploadTranslationPart(session, index + 1, file.slice(start, end));
+        parts.push({ partNumber: part.partNumber, etag: part.etag });
+        onProgress?.(end, file.size);
+      }
+      const result = await api("/api/admin/files/complete", {
+        method: "POST",
+        body: JSON.stringify({
+          key: session.key,
+          uploadId: session.uploadId,
+          name: file.name,
+          size: file.size,
+          parts,
+        }),
+      });
+      completed = true;
+      return result;
+    } finally {
+      if (!completed) {
+        try {
+          await api("/api/admin/files/abort", {
+            method: "POST",
+            body: JSON.stringify({ key: session.key, uploadId: session.uploadId }),
+          });
+        } catch {
+          // The original upload error is more useful than a cleanup failure.
+        }
+      }
+    }
+  }
+
+  async function cleanupTranslationFile(key) {
+    if (!key) return;
+    try {
+      await api("/api/admin/files/delete", {
+        method: "POST",
+        body: JSON.stringify({ key }),
+      });
+    } catch {
+      // Cleanup is best effort; the original save error remains visible.
+    }
+  }
+
+  async function saveTranslation(event) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const submit = $("button[type=submit]", form);
+    const values = new FormData(form);
+    const newKeys = [];
+    let uploadedDownloadKey = null;
+    let recordSaved = false;
+    submit.disabled = true;
+    const finishLoading = beginForegroundLoading("جارٍ حفظ التعريب…");
+    $("#translation-message").textContent = "جارٍ الحفظ…";
+    try {
+      let coverKey = state.editing?.coverKey || null;
+      let galleryKeys = state.editing?.galleryKeys || [];
+      let downloadKey = state.editing?.downloadKey || null;
+      let downloadName = state.editing?.downloadName || null;
+      let downloadSize = state.editing?.downloadSize || null;
+      const coverFiles = form.elements.cover.files;
+      const galleryFiles = form.elements.gallery.files;
+      const progress = (index, total, phase) => {
+        const action = phase === "prepare" ? "تجهيز" : "رفع";
+        $("#translation-message").textContent = `${action} الصور (${index}/${total})…`;
+      };
+      if (coverFiles.length) {
+        const uploadedCover = await uploadImages(coverFiles, progress);
+        coverKey = uploadedCover[0]?.key || coverKey;
+        newKeys.push(...uploadedCover.map((file) => file.key));
+      }
+      if (galleryFiles.length) {
+        const uploadedGallery = await uploadImages(galleryFiles, progress);
+        galleryKeys = uploadedGallery.map((file) => file.key);
+        newKeys.push(...galleryKeys);
+      }
+      const access = values.get("access");
+      const selectedFile = form.elements.downloadFile.files?.[0];
+      const externalUrl = String(values.get("downloadUrl") || "").trim();
+      if (selectedFile) {
+        const uploaded = await uploadTranslationFile(selectedFile, (uploadedBytes, totalBytes) => {
+          const percent = Math.min(100, Math.round((uploadedBytes / totalBytes) * 100));
+          $("#translation-message").textContent = `رفع ملف التعريب: ${percent}% (${formatBytes(uploadedBytes)} من ${formatBytes(totalBytes)})`;
+        });
+        downloadKey = uploaded.key;
+        downloadName = uploaded.name;
+        downloadSize = uploaded.size;
+        uploadedDownloadKey = uploaded.key;
+      } else if (access === "free" && externalUrl) {
+        downloadKey = null;
+        downloadName = null;
+        downloadSize = null;
+      }
+      const needsFile = values.get("projectStatus") === "released" || values.get("earlyAccess") === "on";
+      if (needsFile && (access === "vip" || values.get("earlyAccess") === "on") && !downloadKey) throw new Error("اختر ملف تعريب VIP من الجهاز.");
+      if (needsFile && access === "free" && !downloadKey && !externalUrl) {
+        throw new Error("أدخل رابط التنزيل أو اختر ملف التعريب من الجهاز.");
+      }
+      $("#translation-message").textContent = "جارٍ حفظ بيانات التعريب…";
+      const payload = {
+        title: values.get("title"),
+        genre: values.get("genre"),
+        releaseYear: values.get("releaseYear"),
+        projectStatus: values.get("projectStatus"),
+        progress: Number(values.get("progress")),
+        earlyAccess: values.get("earlyAccess") === "on",
+        freeAt: publishedAtIso(values.get("freeAt")),
+        slug: values.get("slug"),
+        description: values.get("description"),
+        access: values.get("access"),
+        downloadUrl: access === "free" ? externalUrl : "",
+        downloadKey,
+        downloadName,
+        downloadSize,
+        isPublished: values.get("isPublished") === "on",
+        isFeatured: values.get("isFeatured") === "on",
+        hasNewUpdate: values.get("hasNewUpdate") === "on",
+        isNewRelease: values.get("isNewRelease") === "on",
+        isExperimental: values.get("isExperimental") === "on",
+        publishedAt: publishedAtIso(values.get("publishedAt")),
+        coverKey,
+        galleryKeys,
+      };
+      const id = values.get("id");
+      const saved = await api(id ? `/api/admin/translations/${id}` : "/api/admin/translations", {
+        method: id ? "PATCH" : "POST",
+        body: JSON.stringify(payload),
+      });
+      recordSaved = true;
+      resetTranslationForm();
+      $("#translation-message").textContent = "تم الحفظ.";
+      if (saved.discordDelivery === "sent") $("#translation-message").textContent = "تم الحفظ وإرسال الإعلان إلى Discord.";
+      if (saved.discordDelivery === "failed") $("#translation-message").textContent = "تم حفظ التعريب، لكن لم يُرسل إعلان Discord. أعد حفظه للمحاولة مجددًا.";
+      if (saved.discordDelivery === "uncertain") $("#translation-message").textContent = "تم حفظ التعريب. تعذر تأكيد وصول إعلان Discord؛ راجع القناة قبل إعادة الإعلان.";
+      await Promise.all([loadAdminData({ fresh: true }), loadCatalog(true)]);
+    } catch (error) {
+      if (!recordSaved) {
+        await Promise.all([cleanupImages(newKeys), cleanupTranslationFile(uploadedDownloadKey)]);
+      }
+      $("#translation-message").textContent = error.message;
+    } finally {
+      submit.disabled = false;
+      finishLoading();
+    }
+  }
+
+  function renderAdminTranslations() {
+    const list = $("#admin-translations");
+    const model = pagedCollection(
+      state.adminTranslations,
+      state.adminTranslationQuery,
+      ["id", "title", "slug", "description"],
+      "adminTranslationPage",
+      "adminTranslationPageSize",
+    );
+    renderAdminPagination("#admin-translations-pagination", model, (page) => {
+      state.adminTranslationPage = page;
+      renderAdminTranslations();
+    }, (pageSize) => {
+      state.adminTranslationPageSize = pageSize;
+      state.adminTranslationPage = 1;
+      renderAdminTranslations();
+    });
+    if (!model.rows.length) {
+      list.replaceChildren(make("p", "empty-row", state.adminTranslationQuery ? "لا توجد تعريبات مطابقة للبحث." : "لا توجد تعريبات."));
+      return;
+    }
+    list.replaceChildren(...model.rows.map((item) => {
+      const row = make("article", "admin-row");
+      const info = make("div", "admin-row-info");
+      info.append(make("strong", "", item.title));
+      info.append(make("span", "", `#${item.id} · ${item.access === "vip" ? "VIP" : "مجاني"}`));
+      info.append(makeIconText("span", "admin-published-date", `تاريخ النشر: ${formatDate(item.publishedAt)}`, "calendar"));
+      if (item.isFeatured) info.append(makeIconText("span", "admin-featured", "تعريب مميز", "star"));
+      const tags = translationTagNodes(item);
+      if (tags.length) {
+        const tagList = make("div", "admin-translation-tags");
+        tagList.append(...tags);
+        info.append(tagList);
+      }
+      const stats = make("div", "admin-stats");
+      stats.append(
+        makeIconText("span", "stat-line", `${Number(item.downloadCount) || 0} تحميل`, "download"),
+        makeViewStat(item),
+        makeIconText("span", "stat-line", `${Number(item.commentCount) || 0} تعليق`, "comments"),
+      );
+      info.append(stats);
+      if (item.downloadName) info.append(makeIconText("span", "admin-file-name", `${item.downloadName} · ${formatBytes(item.downloadSize)}`, "upload"));
+      if (!item.isPublished) info.append(make("span", "unpublished", "غير منشور"));
+      if (item.discordDelivery === "sent") info.append(make("span", "", "تم الإعلان في Discord"));
+      if (item.discordDelivery === "failed") info.append(make("span", "unpublished", "لم يُرسل إعلان Discord — أعد الحفظ للمحاولة"));
+      if (["uncertain", "sending"].includes(item.discordDelivery)) info.append(make("span", "", "إعلان Discord قيد التحقق — راجع القناة"));
+      const actions = make("div", "row-actions");
+      const edit = makeIconText("button", "button ghost small", "تعديل", "edit");
+      const remove = makeIconText("button", "button danger small", "حذف", "trash");
+      edit.type = remove.type = "button";
+      edit.addEventListener("click", () => editTranslation(item));
+      remove.addEventListener("click", () => deleteTranslation(item));
+      actions.append(edit, remove);
+      const content = make("div", "admin-translation-content");
+      const thumbnail = make("div", "admin-translation-thumb");
+      const coverUrl = existingTranslationPreviewImages(item).cover;
+      if (coverUrl) {
+        const image = make("img");
+        image.src = coverUrl;
+        image.alt = `غلاف ${item.title}`;
+        image.loading = "lazy";
+        image.decoding = "async";
+        thumbnail.append(image);
+      } else { thumbnail.append(icon("gamepad")); }
+      content.append(thumbnail, info);
+      row.append(content, actions);
+      return row;
+    }));
+  }
+
+  function releasePreviewUrl(value) {
+    if (value) URL.revokeObjectURL(value);
+  }
+
+  function replacePreviewMedia(kind, files) {
+    if (kind === "translationGallery") {
+      adminPreviewMedia.translationGallery.forEach(releasePreviewUrl);
+      adminPreviewMedia.translationGallery = Array.from(files || []).slice(0, 4).map((file) => URL.createObjectURL(file));
+      return;
+    }
+    releasePreviewUrl(adminPreviewMedia[kind]);
+    adminPreviewMedia[kind] = files?.[0] ? URL.createObjectURL(files[0]) : null;
+  }
+
+  function existingTranslationPreviewImages(item) {
+    const cover = item?.coverUrl || (item?.coverKey ? `${API_BASE}/api/media/${encodeURIComponent(item.coverKey)}` : null);
+    const gallery = Array.isArray(item?.galleryUrls) && item.galleryUrls.length
+      ? item.galleryUrls.slice(0, 4)
+      : Array.isArray(item?.galleryKeys)
+        ? item.galleryKeys.slice(0, 4).map((key) => `${API_BASE}/api/media/${encodeURIComponent(key)}`)
+        : [];
+    return { cover, gallery };
+  }
+
+  function renderTranslationPreview() {
+    const form = $("#translation-form");
+    const root = $("#translation-live-preview");
+    if (!form || !root) return;
+    const existing = existingTranslationPreviewImages(state.editing);
+    const item = {
+      title: form.elements.title.value.trim() || "اسم التعريب",
+      genre: form.elements.genre.value,
+      releaseYear: form.elements.releaseYear.value,
+      projectStatus: form.elements.projectStatus.value,
+      progress: form.elements.projectStatus.value === "released" ? 100 : Number(form.elements.progress.value),
+      earlyAccess: form.elements.earlyAccess.checked,
+      freeAt: form.elements.freeAt.value,
+      description: form.elements.description.value.trim() || "سيظهر وصف التعريب هنا قبل النشر.",
+      access: form.elements.access.value,
+      isPublished: form.elements.isPublished.checked,
+      isFeatured: form.elements.isFeatured.checked,
+      isNewRelease: form.elements.isNewRelease.checked,
+      hasNewUpdate: form.elements.hasNewUpdate.checked,
+      isExperimental: form.elements.isExperimental.checked,
+      publishedAt: form.elements.publishedAt.value || new Date().toISOString(),
+      coverUrl: adminPreviewMedia.translationCover || existing.cover,
+      galleryUrls: adminPreviewMedia.translationGallery.length ? adminPreviewMedia.translationGallery : existing.gallery,
+    };
+    const cover = make("div", "preview-cover");
+    if (item.coverUrl) {
+      const image = make("img");
+      image.src = item.coverUrl;
+      image.alt = `معاينة غلاف ${item.title}`;
+      image.decoding = "async";
+      cover.append(image);
+    } else {
+      cover.append(make("span", "preview-cover-empty", "صورة الغلاف"));
+    }
+    cover.append(make("span", `preview-cover-state${item.isPublished ? "" : " draft"}`, item.isPublished ? "جاهز للنشر" : "مسودة"));
+    const body = make("div", "translation-preview-body");
+    const badges = make("div", "preview-badges");
+    badges.append(make("span", `type-badge ${item.access}`, item.access === "vip" ? "VIP" : "مجاني"));
+    if (item.isFeatured) badges.append(makeIconText("span", "featured-badge", "مميز", "star"));
+    badges.append(...translationTagNodes(item));
+    body.append(badges, make("h4", "", item.title), make("p", "", item.description));
+    const meta = make("div", "preview-meta");
+    meta.append(make("span", "", `النشر: ${formatDate(item.publishedAt)}`), make("span", "", item.isPublished ? "ظاهر للزوار" : "غير منشور"));
+    body.append(meta, projectInfo(item));
+    const gallery = make("div", "preview-gallery");
+    for (let index = 0; index < 4; index += 1) {
+      const figure = make("figure");
+      const source = item.galleryUrls[index];
+      if (source) {
+        const image = make("img");
+        image.src = source;
+        image.alt = `معاينة الصورة ${index + 1}`;
+        image.decoding = "async";
+        figure.append(image);
+      } else {
+        figure.append(make("span", "preview-cover-empty", "+"));
+      }
+      figure.append(make("figcaption", "", `الصورة ${index + 1}`));
+      gallery.append(figure);
+    }
+    body.append(gallery, make("span", `preview-download${item.access === "vip" ? " is-locked" : ""}`, "تنزيل التعريب"));
+    root.replaceChildren(cover, body);
+  }
+
+  function renderNewsPreview() {
+    const form = $("#news-form");
+    const root = $("#news-live-preview");
+    if (!form || !root) return;
+    const title = form.elements.title.value.trim() || "عنوان الخبر";
+    const bodyText = form.elements.body.value.trim() || "سيظهر نص الخبر هنا قبل نشره في الصفحة الرئيسية وإرساله إلى الإشعارات.";
+    const selectedCover = adminPreviewMedia.newsCover;
+    const existingCover = state.editingNews?.coverUrl || (state.editingNews?.coverKey ? `${API_BASE}/api/media/${encodeURIComponent(state.editingNews.coverKey)}` : null);
+    const coverUrl = selectedCover || (form.elements.removeCover.checked ? null : existingCover);
+    const published = form.elements.isPublished.checked;
+    const cover = make("div", "preview-cover");
+    if (coverUrl) {
+      const image = make("img");
+      image.src = coverUrl;
+      image.alt = `معاينة صورة ${title}`;
+      image.decoding = "async";
+      cover.append(image);
+    } else {
+      cover.append(make("span", "preview-cover-empty", "صورة الخبر اختيارية"));
+    }
+    cover.append(make("span", `preview-cover-state${published ? "" : " draft"}`, published ? "منشور" : "مسودة"));
+    const content = make("div", "news-preview-body");
+    content.append(make("time", "", formatDate(new Date())), make("h4", "", title), make("p", "", bodyText));
+    root.replaceChildren(cover, content);
+  }
+
+  function editTranslation(item) {
+    state.editing = item;
+    replacePreviewMedia("translationCover", []);
+    replacePreviewMedia("translationGallery", []);
+    const form = $("#translation-form");
+    form.elements.cover.value = "";
+    form.elements.gallery.value = "";
+    form.elements.downloadFile.value = "";
+    updateFileLabel(form.elements.cover);
+    updateFileLabel(form.elements.gallery);
+    updateFileLabel(form.elements.downloadFile);
+    form.elements.id.value = item.id;
+    form.elements.title.value = item.title;
+    form.elements.slug.value = item.slug;
+    form.elements.description.value = item.description;
+    form.elements.access.value = item.configuredAccess || item.access;
+    form.elements.genre.value = item.genre || "";
+    form.elements.releaseYear.value = item.releaseYear || "";
+    form.elements.projectStatus.value = item.projectStatus || "released";
+    form.elements.progress.value = item.progress ?? 100;
+    form.elements.earlyAccess.checked = Boolean(item.earlyAccess);
+    form.elements.freeAt.value = item.freeAt ? toDateTimeLocal(item.freeAt) : "";
+    form.elements.downloadUrl.value = item.downloadUrl || "";
+    form.elements.isPublished.checked = item.isPublished;
+    form.elements.isFeatured.checked = item.isFeatured;
+    form.elements.hasNewUpdate.checked = item.hasNewUpdate;
+    form.elements.isNewRelease.checked = item.isNewRelease;
+    form.elements.isExperimental.checked = item.isExperimental;
+    form.elements.publishedAt.value = item.publishedAt ? toDateTimeLocal(item.publishedAt) : "";
+    syncDownloadFields();
+    $("#translation-editor-title").textContent = `تعديل: ${item.title}`;
+    renderTranslationPreview();
+    $("#cancel-edit").hidden = false;
+    form.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  function updateFileLabel(input) {
+    const label = $(`[data-file-label="${input.name}"]`);
+    if (!label) return;
+    if (!input.files?.length) {
+      label.textContent = input.name === "cover" || input.name === "newsCover"
+        ? "لم تُحدد صورة"
+        : input.name === "gallery"
+          ? "لم تُحدد صور"
+          : "لم يُحدد ملف";
+      return;
+    }
+    label.textContent = input.files.length === 1 ? input.files[0].name : `${input.files.length} صور محددة`;
+  }
+
+  function resetTranslationForm() {
+    state.editing = null;
+    replacePreviewMedia("translationCover", []);
+    replacePreviewMedia("translationGallery", []);
+    const form = $("#translation-form");
+    form.reset();
+    form.elements.id.value = "";
+    form.elements.isPublished.checked = true;
+    form.elements.isFeatured.checked = false;
+    form.elements.hasNewUpdate.checked = false;
+    form.elements.isNewRelease.checked = false;
+    form.elements.isExperimental.checked = false;
+    form.elements.publishedAt.value = toDateTimeLocal(new Date());
+    updateFileLabel(form.elements.cover);
+    updateFileLabel(form.elements.gallery);
+    updateFileLabel(form.elements.downloadFile);
+    syncDownloadFields();
+    $("#translation-editor-title").textContent = "إضافة تعريب جديد";
+    renderTranslationPreview();
+    $("#cancel-edit").hidden = true;
+  }
+
+  function syncDownloadFields() {
+    const form = $("#translation-form");
+    if (form.elements.earlyAccess.checked) form.elements.access.value = "vip";
+    form.elements.freeAt.disabled = !form.elements.earlyAccess.checked;
+    const isVip = form.elements.access.value === "vip";
+    $("#download-url-field").hidden = isVip;
+    $("#download-file-field").hidden = false;
+    form.elements.downloadUrl.required = false;
+    form.elements.downloadFile.required = isVip && !state.editing?.downloadKey && (form.elements.projectStatus.value === "released" || form.elements.earlyAccess.checked);
+    const note = $("#download-file-note");
+    if (state.editing?.downloadKey && !form.elements.downloadFile.files?.length) {
+      note.textContent = `الملف الحالي: ${state.editing.downloadName} (${formatBytes(state.editing.downloadSize)}). اختر ملفًا جديدًا لاستبداله.`;
+    } else if (isVip) {
+      note.textContent = "ملف VIP مطلوب، ويُرفع من الجهاز على أجزاء حتى 512MB.";
+    } else {
+      note.textContent = "اختر ملفًا من الجهاز أو استخدم رابط التنزيل المجاني.";
+    }
+  }
+
+  async function deleteTranslation(item) {
+    if (!confirm(`حذف تعريب «${item.title}»؟`)) return;
+    try {
+      await api(`/api/admin/translations/${item.id}`, { method: "DELETE" });
+      if (state.editing?.id === item.id) resetTranslationForm();
+      await Promise.all([loadAdminData({ fresh: true }), loadCatalog(true)]);
+      toast("تم حذف التعريب.");
+    } catch (error) {
+      toast(error.message, "error");
+    }
+  }
+
+  async function saveNews(event) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const submit = $("button[type=submit]", form);
+    const values = new FormData(form);
+    let uploadedKey = null;
+    let recordSaved = false;
+    submit.disabled = true;
+    const finishLoading = beginForegroundLoading("جارٍ حفظ الخبر…");
+    $("#news-message").textContent = "جارٍ حفظ الخبر…";
+    try {
+      let coverKey = state.editingNews?.coverKey || null;
+      if (values.get("removeCover") === "on") coverKey = null;
+      const selectedCover = form.elements.newsCover.files;
+      if (selectedCover.length) {
+        const uploaded = await uploadImages(selectedCover, (index, total, phase) => {
+          $("#news-message").textContent = phase === "prepare" ? "جارٍ تجهيز الصورة…" : `جارٍ رفع الصورة (${index}/${total})…`;
+        });
+        uploadedKey = uploaded[0]?.key || null;
+        if (!uploadedKey) throw new Error("لم تُرفع صورة الخبر بصورة صحيحة.");
+        coverKey = uploadedKey;
+      }
+      const payload = {
+        title: values.get("title"),
+        body: values.get("body"),
+        coverKey,
+        isPublished: values.get("isPublished") === "on",
+      };
+      const id = values.get("id");
+      const result = await api(id ? `/api/admin/news/${id}` : "/api/admin/news", {
+        method: id ? "PATCH" : "POST",
+        body: JSON.stringify(payload),
+      });
+      const savedNews = result.news;
+      if (savedNews) {
+        state.news = state.news.filter((post) => post.id !== savedNews.id);
+        if (savedNews.isPublished) state.news.unshift(savedNews);
+        writePublicCache(PUBLIC_CACHE_KEYS.news, state.news);
+        renderNews();
+      }
+      recordSaved = true;
+      resetNewsForm();
+      $("#news-message").textContent = "تم حفظ الخبر.";
+      await Promise.all([loadAdminData({ fresh: true }), loadNews(true), loadNotifications()]);
+    } catch (error) {
+      if (!recordSaved && uploadedKey) await cleanupImages([uploadedKey]);
+      $("#news-message").textContent = error.message;
+    } finally {
+      submit.disabled = false;
+      finishLoading();
+    }
+  }
+
+  function renderAdminNews() {
+    const list = $("#admin-news");
+    const model = pagedCollection(
+      state.adminNews,
+      state.adminNewsQuery,
+      ["id", "title", "body"],
+      "adminNewsPage",
+      "adminNewsPageSize",
+    );
+    renderAdminPagination("#admin-news-pagination", model, (page) => {
+      state.adminNewsPage = page;
+      renderAdminNews();
+    }, (pageSize) => {
+      state.adminNewsPageSize = pageSize;
+      state.adminNewsPage = 1;
+      renderAdminNews();
+    });
+    if (!model.rows.length) {
+      list.replaceChildren(make("p", "empty-row", state.adminNewsQuery ? "لا توجد أخبار مطابقة للبحث." : "لا توجد أخبار."));
+      return;
+    }
+    list.replaceChildren(...model.rows.map((post) => {
+      const row = make("article", "admin-row news-admin-row");
+      const info = make("div", "admin-row-info");
+      info.append(
+        make("strong", "", post.title),
+        make("span", "", post.isPublished ? `منشور · ${formatDate(post.publishedAt)}` : "غير منشور"),
+        make("p", "admin-news-excerpt", post.body),
+      );
+      const actions = make("div", "row-actions");
+      const edit = makeIconText("button", "button ghost small", "تعديل", "edit");
+      const remove = makeIconText("button", "button danger small", "حذف", "trash");
+      edit.type = remove.type = "button";
+      edit.addEventListener("click", () => editNews(post));
+      remove.addEventListener("click", () => deleteNews(post));
+      actions.append(edit, remove);
+      row.append(info, actions);
+      return row;
+    }));
+  }
+
+  function editNews(post) {
+    state.editingNews = post;
+    replacePreviewMedia("newsCover", []);
+    const form = $("#news-form");
+    form.elements.id.value = post.id;
+    form.elements.title.value = post.title;
+    form.elements.body.value = post.body;
+    form.elements.isPublished.checked = post.isPublished;
+    form.elements.removeCover.checked = false;
+    form.elements.newsCover.value = "";
+    updateFileLabel(form.elements.newsCover);
+    $("#news-editor-title").textContent = `تعديل: ${post.title}`;
+    renderNewsPreview();
+    $("#cancel-news-edit").hidden = false;
+    form.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  function resetNewsForm() {
+    state.editingNews = null;
+    replacePreviewMedia("newsCover", []);
+    const form = $("#news-form");
+    form.reset();
+    form.elements.id.value = "";
+    form.elements.isPublished.checked = true;
+    updateFileLabel(form.elements.newsCover);
+    $("#news-editor-title").textContent = "إضافة خبر جديد";
+    renderNewsPreview();
+    $("#cancel-news-edit").hidden = true;
+  }
+
+  async function deleteNews(post) {
+    if (!confirm(`حذف خبر «${post.title}»؟`)) return;
+    try {
+      await api(`/api/admin/news/${post.id}`, { method: "DELETE" });
+      state.news = state.news.filter((item) => item.id !== post.id);
+      writePublicCache(PUBLIC_CACHE_KEYS.news, state.news);
+      renderNews();
+      if (state.editingNews?.id === post.id) resetNewsForm();
+      await Promise.all([loadAdminData({ fresh: true }), loadNews(true), loadNotifications()]);
+      toast("تم حذف الخبر.");
+    } catch (error) {
+      toast(error.message, "error");
+    }
+  }
+
+  function renderAdminInvoices() {
+    const list = $("#admin-invoices");
+    const invoices = state.adminInvoices.filter((invoice) => (
+      state.adminInvoiceFilter === "all" || invoice.status === state.adminInvoiceFilter
+    ));
+    if (!invoices.length) {
+      list.replaceChildren(make("p", "empty-row", "لا توجد فواتير في هذه الفئة."));
+      return;
+    }
+    list.replaceChildren(...invoices.map((invoice) => {
+      const row = make("article", `paypal-invoice-row status-${invoice.status}`);
+      const main = make("div", "paypal-invoice-main");
+      const top = make("div", "paypal-invoice-top");
+      const number = make("code", "invoice-number", invoice.invoiceNumber);
+      top.append(number, make("span", `invoice-status ${invoice.status}`, invoiceStatusLabel(invoice.status)));
+      const person = make("div", "invoice-person");
+      person.append(
+        makeIconText("strong", "", `${invoice.username} · #${invoice.userId}`, "user"),
+        make("span", `tier-pill ${invoice.userTier}`, tierLabel(invoice.userTier)),
+      );
+      const details = make("div", "invoice-meta");
+      details.append(
+        make("span", "", invoice.email),
+        makeIconText("time", "", `أُرسلت ${formatDateTime(invoice.createdAt)}`, "calendar"),
+      );
+      main.append(top, person, details);
+      if (invoice.reviewNote) main.append(make("p", "invoice-review-note", `ملاحظة: ${invoice.reviewNote}`));
+      if (invoice.status === "approved" && invoice.approvedVipUntil) {
+        main.append(makeIconText("p", "invoice-approved-until", `تم تفعيل VIP حتى ${formatDate(invoice.approvedVipUntil)}`, "crown"));
+      }
+
+      const actions = make("div", "invoice-actions");
+      if (invoice.status === "pending") {
+        const approve = makeIconText("button", "button approve small", "موافقة وتفعيل 30 يومًا", "check");
+        const reject = makeIconText("button", "button danger small", "رفض", "close");
+        approve.type = reject.type = "button";
+        approve.addEventListener("click", () => reviewPaypalInvoice(invoice, "approve"));
+        reject.addEventListener("click", () => reviewPaypalInvoice(invoice, "reject"));
+        actions.append(approve, reject);
+      }
+      const remove = makeIconText("button", "button danger small", "حذف الفاتورة", "trash");
+      remove.type = "button";
+      remove.addEventListener("click", () => deletePaypalInvoice(invoice));
+      actions.append(remove);
+      row.append(main, actions);
+      return row;
+    }));
+  }
+
+  async function reviewPaypalInvoice(invoice, action) {
+    let note = "";
+    if (action === "approve") {
+      if (!confirm(`تأكيد فاتورة ${invoice.invoiceNumber} وتفعيل VIP للحساب #${invoice.userId} لمدة 30 يومًا؟`)) return;
+    } else {
+      const result = prompt(`سبب رفض فاتورة ${invoice.invoiceNumber} (اختياري):`, "");
+      if (result === null) return;
+      note = result.trim();
+    }
+    try {
+      await api(`/api/admin/paypal-invoices/${invoice.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ action, note }),
+      });
+      await loadAdminData({ fresh: true });
+      toast(action === "approve" ? "تمت الموافقة وتفعيل VIP لمدة 30 يومًا." : "تم رفض الفاتورة.");
+    } catch (error) {
+      toast(error.message, "error");
+    }
+  }
+
+  async function deletePaypalInvoice(invoice) {
+    if (!confirm(`حذف فاتورة PayPal رقم ${invoice.invoiceNumber} من السجل؟\nلن تتغير عضوية VIP الحالية للحساب.`)) return;
+    try {
+      await api(`/api/admin/paypal-invoices/${invoice.id}`, { method: "DELETE" });
+      state.adminInvoices = state.adminInvoices.filter((item) => item.id !== invoice.id);
+      renderAdminInvoices();
+      renderAdminOverview();
+      toast("تم حذف الفاتورة دون تغيير عضوية المستخدم.");
+    } catch (error) {
+      toast(error.message, "error");
+    }
+  }
+
+  async function loadAdminTranslationRequests() {
+    if (state.user?.role !== "admin") return;
+    const result = await api("/api/admin/translation-requests");
+    state.adminTranslationRequests = result.requests || [];
+    renderAdminTranslationRequests();
+    renderAdminOverview();
+  }
+
+  function renderAdminTranslationRequests() {
+    const list = $("#admin-requests");
+    if (!state.adminTranslationRequests.length) {
+      list.replaceChildren(make("p", "empty-row", "لا توجد طلبات تعريب."));
+      return;
+    }
+    list.replaceChildren(...state.adminTranslationRequests.map((request) => {
+      const row = make("article", "admin-row localization-request-row");
+      const main = make("div", "request-admin-main");
+      const image = make("img", "request-admin-image");
+      image.src = request.imageUrl;
+      image.alt = request.gameName;
+      image.loading = "lazy";
+      image.tabIndex = 0;
+      image.addEventListener("click", () => openLightbox(request.imageUrl, request.gameName));
+      image.addEventListener("keydown", (event) => {
+        if (event.key === "Enter" || event.key === " ") openLightbox(request.imageUrl, request.gameName);
+      });
+      const info = make("div", "admin-row-info");
+      info.append(
+        make("strong", "", request.gameName),
+        make("span", "", `${request.user.username} · #${request.user.id} · ${formatDateTime(request.createdAt)}`),
+        make("span", `tier-pill ${request.user.tier}`, tierLabel(request.user.tier)),
+        make("p", "request-admin-reason", request.reason),
+        make("span", `request-status ${request.status}`, translationRequestStatusLabel(request.status)),
+      );
+      main.append(image, info);
+      const actions = make("div", "row-actions request-admin-actions");
+      if (request.status === "pending") {
+        const approve = makeIconText("button", "button approve small", "موافقة", "check");
+        const reject = makeIconText("button", "button danger small", "رفض", "close");
+        approve.type = reject.type = "button";
+        approve.addEventListener("click", () => reviewTranslationRequest(request, "approve"));
+        reject.addEventListener("click", () => reviewTranslationRequest(request, "reject"));
+        actions.append(approve, reject);
+      }
+      const remove = makeIconText("button", "button danger small", "حذف الطلب", "trash");
+      remove.type = "button";
+      remove.addEventListener("click", () => deleteTranslationRequest(request));
+      actions.append(remove);
+      row.append(main, actions);
+      return row;
+    }));
+  }
+
+  async function reviewTranslationRequest(request, action) {
+    const verb = action === "approve" ? "الموافقة على" : "رفض";
+    if (!confirm(`تأكيد ${verb} طلب تعريب ${request.gameName}؟`)) return;
+    try {
+      await api(`/api/admin/translation-requests/${request.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ action }),
+      });
+      await loadAdminTranslationRequests();
+      toast(action === "approve" ? "تمت الموافقة على الطلب." : "تم رفض الطلب.");
+    } catch (error) {
+      toast(error.message, "error");
+    }
+  }
+
+  async function deleteTranslationRequest(request) {
+    if (!confirm(`حذف طلب تعريب «${request.gameName}» نهائيًا؟`)) return;
+    try {
+      await api(`/api/admin/translation-requests/${request.id}`, { method: "DELETE" });
+      state.adminTranslationRequests = state.adminTranslationRequests.filter((item) => item.id !== request.id);
+      renderAdminTranslationRequests();
+      renderAdminOverview();
+      toast("تم حذف طلب التعريب.");
+    } catch (error) {
+      toast(error.message, "error");
+    }
+  }
+
+  function renderUsers() {
+    const list = $("#admin-users");
+    const model = {
+      page: state.adminUserPage,
+      pageSize: state.adminUserPageSize,
+      total: state.adminUserTotal,
+      totalPages: state.adminUserTotalPages,
+    };
+    renderAdminPagination("#admin-users-pagination", model, (page) => {
+      state.adminUserPage = page;
+      loadAdminUsers().catch((error) => toast(error.message, "error"));
+    }, (pageSize) => {
+      state.adminUserPageSize = pageSize;
+      state.adminUserPage = 1;
+      loadAdminUsers().catch((error) => toast(error.message, "error"));
+    });
+    if (!state.users.length) {
+      list.replaceChildren(make("p", "empty-row", state.adminUserQuery ? "لا توجد حسابات مطابقة للبحث." : "لا يوجد مستخدمون."));
+      return;
+    }
+    list.replaceChildren(...state.users.map((user) => {
+      const row = make("article", "admin-row user-row");
+      const info = make("div", "admin-row-info");
+      info.append(make("strong", `tier-name ${user.tier}`, `${user.username} · #${user.id}`));
+      info.prepend(avatarControl(user));
+      info.append(make("span", "", user.email));
+      const membershipText = user.tier === "owner"
+        ? "Owner"
+        : user.tier === "mod"
+          ? user.membership === "vip" ? `Mod · VIP حتى ${formatDate(user.vipUntil)}` : "Mod"
+          : user.tier === "vip"
+          ? `VIP حتى ${formatDate(user.vipUntil)}`
+          : "عضو";
+      info.append(make("span", `tier-pill ${user.tier}`, membershipText));
+      const actions = make("div", "membership-actions");
+      const days = make("input");
+      days.type = "number";
+      days.min = "1";
+      days.max = "3650";
+      days.value = "30";
+      days.setAttribute("aria-label", "عدد الأيام");
+      const grant = makeIconText("button", "button primary small", "منح VIP", "crown");
+      const revoke = makeIconText("button", "button danger small", "إلغاء VIP", "trash");
+      const resetPassword = makeIconText("button", "button ghost small", "إعادة تعيين كلمة المرور", "key");
+      const setMod = makeIconText("button", "button ghost small", user.tier === "mod" ? "إزالة Mod" : "تعيين Mod", "shield");
+      const deleteUser = makeIconText("button", "button danger small", "مسح الحساب", "trash");
+      grant.type = revoke.type = resetPassword.type = setMod.type = deleteUser.type = "button";
+      grant.addEventListener("click", () => updateMembership(user.id, "grant", Number(days.value)));
+      revoke.addEventListener("click", () => updateMembership(user.id, "revoke"));
+      resetPassword.addEventListener("click", () => resetUserPassword(user));
+      setMod.hidden = user.tier === "owner";
+      setMod.addEventListener("click", () => updateModeratorRole(user));
+      deleteUser.disabled = user.membership === "vip" || user.tier === "owner";
+      deleteUser.title = user.membership === "vip"
+        ? "الحذف متوقف لحماية عضوية VIP من الضياع"
+        : user.tier === "owner" ? "لا يمكن حذف حساب Owner" : "مسح الحساب نهائيًا";
+      deleteUser.addEventListener("click", () => deleteUserAccount(user));
+      actions.append(days, grant, revoke, setMod, resetPassword, deleteUser);
+      row.append(info, actions);
+      return row;
+    }));
+  }
+
+  async function updateMembership(id, action, days = 30) {
+    try {
+      await api(`/api/admin/users/${id}`, { method: "PATCH", body: JSON.stringify({ action, days }) });
+      await loadAdminData({ fresh: true });
+      toast(action === "grant" ? "تم منح VIP." : "تم إلغاء VIP.");
+    } catch (error) {
+      toast(error.message, "error");
+    }
+  }
+
+  async function updateModeratorRole(user) {
+    const role = user.tier === "mod" ? "user" : "moderator";
+    const label = role === "moderator" ? "منح صلاحية Mod" : "إزالة صلاحية Mod";
+    if (!confirm(`${label} للحساب ${user.username} · #${user.id}؟`)) return;
+    try {
+      await api(`/api/admin/users/${user.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ action: "set_role", role }),
+      });
+      await loadAdminData({ fresh: true });
+      toast(role === "moderator" ? "تم تعيين الحساب Mod للدعم الفني." : "تمت إزالة صلاحية Mod.");
+    } catch (error) {
+      toast(error.message, "error");
+    }
+  }
+
+  async function resetUserPassword(user) {
+    const password = prompt(`اكتب كلمة مرور مؤقتة قوية للحساب ${user.username} · #${user.id}:`, "");
+    if (password === null) return;
+    if (password.length < 10 || password.length > 128 || !/\p{L}/u.test(password) || !/\p{N}/u.test(password) || !/[^\p{L}\p{N}\s]/u.test(password)) {
+      toast("استخدم 10 أحرف على الأقل تتضمن حروفًا وأرقامًا ورمزًا خاصًا.", "error");
+      return;
+    }
+    if (!confirm("سيتم تغيير كلمة المرور وإلغاء كل الجلسات القديمة، وستبقى عضوية VIP كما هي. هل تريد المتابعة؟")) return;
+    try {
+      await api(`/api/admin/users/${user.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ action: "reset_password", password }),
+      });
+      if (user.id === state.user?.id) {
+        clearSession();
+        closeDialog("admin-dialog");
+        toast("تم تغيير كلمة المرور وإلغاء الجلسات. سجّل الدخول من جديد.");
+        return;
+      }
+      await loadAdminData({ fresh: true });
+      toast("تم تغيير كلمة المرور وإلغاء جلسات الحساب دون تغيير VIP.");
+    } catch (error) {
+      toast(error.message, "error");
+    }
+  }
+
+  async function deleteUserAccount(user) {
+    if (user.membership === "vip" || user.tier === "owner") return;
+    const confirmationUsername = prompt(`لحذف الحساب نهائيًا، اكتب اسم المستخدم كما هو:\n${user.username}`, "");
+    if (confirmationUsername === null) return;
+    if (!confirm(`سيُحذف الحساب #${user.id} وتعليقاته وسجلاته نهائيًا. هل أنت متأكد؟`)) return;
+    try {
+      await api(`/api/admin/users/${user.id}`, {
+        method: "DELETE",
+        body: JSON.stringify({ confirmationUsername }),
+      });
+      await loadAdminData({ fresh: true });
+      toast("تم مسح الحساب.");
+    } catch (error) {
+      toast(error.message, "error");
+    }
+  }
+
+  async function loadAdminReports() {
+    if (state.user?.role !== "admin" && state.user?.role !== "moderator") return;
+    try {
+      const result = await api("/api/admin/comment-reports");
+      state.adminReports = result.reports || [];
+      renderAdminReports();
+    } catch (error) {
+      toast(error.message, "error");
+    }
+  }
+
+  function renderAdminReports() {
+    const buildRows = () => state.adminReports.map((report) => {
+      const row = make("article", "admin-row report-row");
+      const info = make("div", "admin-row-info");
+      const title = make("strong", "", report.translationTitle);
+      const author = make("span", "report-author");
+      author.append(
+        document.createTextNode(`${report.authorUsername} · `),
+        make("b", `tier-text ${report.authorTier}`, tierLabel(report.authorTier)),
+        document.createTextNode(` · ${report.reportCount} بلاغ`),
+      );
+      info.append(title, author, make("p", "reported-comment", report.body));
+      const actions = make("div", "row-actions");
+      const dismiss = makeIconText("button", "button danger small", "حذف البلاغ", "trash");
+      const remove = makeIconText("button", "button danger small", "حذف التعليق", "trash");
+      dismiss.type = remove.type = "button";
+      dismiss.addEventListener("click", () => dismissReports(report.commentId));
+      remove.addEventListener("click", () => deleteReportedComment(report.commentId));
+      const protectedComment = state.user?.tier === "mod" && (report.authorTier === "owner" || report.authorTier === "mod");
+      if (protectedComment) {
+        remove.disabled = true;
+        remove.title = "لا يستطيع Mod حذف تعليق Owner أو Mod آخر.";
+        info.append(make("span", "protected-comment-note", "تعليق محمي من حذف Mod"));
+      }
+      actions.append(dismiss, remove);
+      row.append(info, actions);
+      return row;
+    });
+    [$("#admin-reports"), $("#moderation-reports")].filter(Boolean).forEach((list) => {
+      if (!state.adminReports.length) list.replaceChildren(make("p", "empty-row", "لا توجد بلاغات."));
+      else list.replaceChildren(...buildRows());
+    });
+  }
+
+  async function dismissReports(commentId) {
+    if (!confirm("حذف جميع البلاغات المرتبطة بهذا التعليق؟ لن يُحذف التعليق نفسه.")) return;
+    try {
+      await api(`/api/comments/${commentId}/reports`, { method: "DELETE" });
+      state.adminReports = state.adminReports.filter((report) => report.commentId !== commentId);
+      renderAdminReports();
+      if (state.user?.tier === "owner") renderAdminOverview();
+      toast("تم حذف البلاغ.");
+    } catch (error) {
+      toast(error.message, "error");
+    }
+  }
+
+  async function deleteReportedComment(commentId) {
+    if (!confirm("حذف التعليق المُبلغ عنه؟")) return;
+    try {
+      await api(`/api/comments/${commentId}`, { method: "DELETE" });
+      if (state.activeTranslation) {
+        const result = await api(`/api/translations/${state.activeTranslation.id}`);
+        state.activeTranslation = result.translation;
+        state.comments = result.comments || [];
+        renderTranslationDetail();
+      }
+      await Promise.all([loadAdminReports(), loadCatalog(true)]);
+      toast("تم حذف التعليق.");
+    } catch (error) {
+      toast(error.message, "error");
+    }
+  }
+
+  $("#year").textContent = new Date().getFullYear();
+  $("#catalog-search").addEventListener("input", renderCatalog);
+  $("#admin-translation-search").addEventListener("input", (event) => {
+    state.adminTranslationQuery = event.currentTarget.value;
+    state.adminTranslationPage = 1;
+    renderAdminTranslations();
+  });
+  $("#admin-news-search").addEventListener("input", (event) => {
+    state.adminNewsQuery = event.currentTarget.value;
+    state.adminNewsPage = 1;
+    renderAdminNews();
+  });
+  $("#admin-user-search").addEventListener("input", (event) => {
+    state.adminUserQuery = event.currentTarget.value.trim();
+    state.adminUserPage = 1;
+    clearTimeout(adminUserSearchTimer);
+    adminUserSearchTimer = setTimeout(() => {
+      loadAdminUsers().catch((error) => toast(error.message, "error"));
+    }, 250);
+  });
+  $$('[data-filter]').forEach((button) => button.addEventListener("click", () => {
+    state.filter = button.dataset.filter;
+    $$('[data-filter]').forEach((candidate) => candidate.classList.toggle("is-active", candidate === button));
+    renderCatalog();
+  }));
+  $$('[data-close]').forEach((button) => button.addEventListener("click", () => closeDialog(button.dataset.close)));
+  $$("dialog").forEach((dialog) => dialog.addEventListener("click", (event) => {
+    if (event.target === dialog) dialog.close();
+  }));
+  $$('[data-auth-tab]').forEach((button) => button.addEventListener("click", () => setAuthTab(button.dataset.authTab)));
+  $$('[data-auth-tab-link]').forEach((button) => button.addEventListener("click", () => setAuthTab(button.dataset.authTabLink)));
+  $$('[data-admin-tab]').forEach((button) => button.addEventListener("click", () => setAdminTab(button.dataset.adminTab)));
+  $("#audit-search-form").addEventListener("submit", (event) => { event.preventDefault(); auditCursors = [null]; loadAudit(null); });
+  $("#audit-next").addEventListener("click", () => { if (auditNext) { auditCursors.push(auditNext); loadAudit(auditNext); } });
+  $("#audit-back").addEventListener("click", () => { if (auditCursors.length > 1) { auditCursors.pop(); loadAudit(auditCursors.at(-1)); } });
+  $$('[data-invoice-filter]').forEach((button) => button.addEventListener("click", () => {
+    state.adminInvoiceFilter = button.dataset.invoiceFilter;
+    $$('[data-invoice-filter]').forEach((candidate) => candidate.classList.toggle("is-active", candidate === button));
+    renderAdminInvoices();
+  }));
+  $("#login-form").addEventListener("submit", (event) => submitAuth(event, "login"));
+  $("#register-form").addEventListener("submit", (event) => submitAuth(event, "register"));
+  $("#recover-form").addEventListener("submit", submitRecovery);
+  $("#account-button").addEventListener("click", openAccount);
+  $("#free-membership-button").addEventListener("click", () => {
+    if (state.token) return openAccount();
+    state.afterAuth = null;
+    setAuthTab("register");
+    showDialog("auth-dialog");
+  });
+  $("#support-button").addEventListener("click", openSupport);
+  $$('[data-open-account]').forEach((button) => button.addEventListener("click", () => showDialog("auth-dialog")));
+  $$('[data-open-support]').forEach((button) => button.addEventListener("click", () => {
+    if (state.user) openSupport();
+    else {
+      state.afterAuth = "support";
+      setAuthTab("login");
+      showDialog("auth-dialog");
+    }
+  }));
+  $("#notification-button").addEventListener("click", openNotifications);
+  $("#privacy-button").addEventListener("click", () => showDialog("privacy-dialog"));
+  $("#translation-request-button").addEventListener("click", () => openTranslationRequest().catch((error) => toast(error.message, "error")));
+  $("#vip-support-button").addEventListener("click", () => openVipSupport().catch((error) => toast(error.message, "error")));
+  $("#invoice-shortcut").addEventListener("click", () => openVipSupport().catch((error) => toast(error.message, "error")));
+  $("#admin-button").addEventListener("click", openControlCenter);
+  $("#logout-button").addEventListener("click", logout);
+  $("#account-form").addEventListener("submit", updateAccount);
+  $("#recovery-code-form").addEventListener("submit", generateRecoveryCode);
+  $("#copy-recovery-code").addEventListener("click", copyRecoveryCode);
+  $("#confirm-recovery-code").addEventListener("click", confirmRecoveryCodeSaved);
+  $("#translation-request-form").addEventListener("submit", submitTranslationRequest);
+  $("#support-ticket-form").addEventListener("submit", createSupportTicket);
+  $("#support-message-form").addEventListener("submit", sendSupportMessage);
+  $("#new-ticket-button").addEventListener("click", showSupportCreate);
+  $("#support-ticket-status").addEventListener("click", toggleSupportTicketStatus);
+  $("#support-ticket-delete").addEventListener("click", deleteSupportTicket);
+  $("#support-message-form").elements.attachment.addEventListener("change", (event) => {
+    const file = event.currentTarget.files?.[0];
+    $("#support-file-name").textContent = file ? `${file.name} · ${supportFileSize(file.size)}` : "الصور حتى 5MB، الفيديو حتى 25MB";
+    $("#support-message-status").textContent = "";
+  });
+  $("#translation-form").addEventListener("submit", saveTranslation);
+  $("#news-form").addEventListener("submit", saveNews);
+  $("#invoice-form").addEventListener("submit", submitPaypalInvoice);
+  $("#interface-form").addEventListener("submit", saveInterfaceSettings);
+  $("#reset-interface").addEventListener("click", resetInterfaceSettings);
+  $$('#interface-form input[type="range"]').forEach((input) => input.addEventListener("input", () => {
+    updateInterfaceScaleOutputs();
+    applyInterfaceSettings(interfaceSettingsFromForm());
+  }));
+  $$('#interface-form input[type="checkbox"]').forEach((input) => input.addEventListener("change", () => {
+    applyInterfaceSettings(interfaceSettingsFromForm());
+  }));
+  $("#cancel-edit").addEventListener("click", resetTranslationForm);
+  $("#cancel-news-edit").addEventListener("click", resetNewsForm);
+  $("#translation-form").addEventListener("input", (event) => {
+    if (event.target.type !== "file") renderTranslationPreview();
+  });
+  $("#news-form").addEventListener("input", (event) => {
+    if (event.target.type !== "file") renderNewsPreview();
+  });
+  $("#translation-form").elements.cover.addEventListener("change", (event) => {
+    updateFileLabel(event.currentTarget);
+    replacePreviewMedia("translationCover", event.currentTarget.files);
+    renderTranslationPreview();
+  });
+  $("#translation-form").elements.gallery.addEventListener("change", (event) => {
+    updateFileLabel(event.currentTarget);
+    replacePreviewMedia("translationGallery", event.currentTarget.files);
+    renderTranslationPreview();
+  });
+  $("#news-form").elements.newsCover.addEventListener("change", (event) => {
+    updateFileLabel(event.currentTarget);
+    replacePreviewMedia("newsCover", event.currentTarget.files);
+    renderNewsPreview();
+  });
+  $("#translation-request-form").elements.requestImage.addEventListener("change", (event) => updateFileLabel(event.currentTarget));
+  $("#translation-form").elements.downloadFile.addEventListener("change", (event) => {
+    updateFileLabel(event.currentTarget);
+    syncDownloadFields();
+  });
+  $("#translation-form").elements.access.addEventListener("change", syncDownloadFields);
+  ["projectStatus", "earlyAccess"].forEach((name) => $("#translation-form").elements[name].addEventListener("change", () => { syncDownloadFields(); renderTranslationPreview(); }));
+  $("#translation-dialog").addEventListener("close", () => {
+    state.detailRequest += 1;
+    state.activeTranslation = null;
+    state.activeTranslationReference = null;
+    state.comments = [];
+    state.replyingTo = null;
+    document.title = "تعريبات ZRo-ZrRo";
+    clearTranslationRoute();
+  });
+  $("#image-dialog").addEventListener("close", () => {
+    $("#lightbox-image").removeAttribute("src");
+  });
+  $("#support-dialog").addEventListener("close", () => {
+    stopSupportPolling();
+    releaseSupportObjectUrls();
+  });
+
+  setIconText($("#logout-button"), "logout", "خروج");
+  setIconText($("#account-form button[type=submit]"), "save", "حفظ");
+  setIconText($("#recovery-code-form button[type=submit]"), "key", "إنشاء رمز استرداد جديد");
+  setIconText($("#copy-recovery-code"), "copy", "نسخ الرمز");
+  setIconText($("#translation-request-button"), "gamepad", "طلبات التعريب");
+  setIconText($("#translation-request-form button[type=submit]"), "gamepad", "إرسال الطلب");
+  setIconText($("#new-ticket-button"), "headset", "تذكرة جديدة");
+  setIconText($("#support-ticket-form button[type=submit]"), "headset", "فتح التذكرة وبدء المحادثة");
+  setIconText($("#support-message-form button[type=submit]"), "send", "إرسال");
+  setIconText($("#translation-form button[type=submit]"), "save", "حفظ التعريب");
+  setIconText($("#news-form button[type=submit]"), "news", "نشر الخبر");
+  setIconText($("#invoice-form button[type=submit]"), "receipt", "إرسال للمراجعة");
+  const adminTabIcons = { translations: "download", news: "news", invoices: "receipt", users: "user", requests: "gamepad", reports: "flag", interface: "layout", audit: "calendar" };
+  $$('[data-admin-tab]').forEach((button) => setIconText(button, adminTabIcons[button.dataset.adminTab], button.textContent));
+  $$(".file-button").forEach((node) => setIconText(node, "upload", node.textContent));
+  $("#translation-form").elements.publishedAt.value = toDateTimeLocal(new Date());
+  enhancePasswordInputs();
+  syncDownloadFields();
+  renderTranslationPreview();
+  renderNewsPreview();
+  hydratePublicCache();
+  updateHeader();
+  startPresenceTracking();
+  renderCatalog();
+  renderNews();
+  syncTranslationFromLocation();
+  const directTranslation = new URL(location.href).searchParams.get("game");
+  if (directTranslation) prefetchTranslation(directTranslation, true);
+  window.setInterval(() => {
+    if (state.user && document.visibilityState === "visible") loadNotifications().catch(() => {});
+  }, 30_000);
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") {
+      heartbeatPresence().catch(() => {});
+      if (state.user) {
+        loadActivityBadges().catch(() => {});
+        if (state.user.tier === "owner") refreshOnlineCount().catch(() => {});
+        if ($("#support-dialog").open) pollSupport();
+      }
     }
   });
-  $("#detail-back").addEventListener("click", () => closeDetail());
-  $("#lightbox-close").addEventListener("click", () => $("#lightbox").hidden = true);
-  $("#lightbox").addEventListener("click", (event) => { if (event.target === $("#lightbox")) $("#lightbox").hidden = true; });
-  document.addEventListener("keydown", (event) => {
-    if (event.key !== "Escape") return;
-    if (!$("#lightbox").hidden) $("#lightbox").hidden = true;
-    else if (!$("#detail-view").hidden) closeDetail();
-  });
-  $("#catalog-search").addEventListener("input", renderLibrary, { passive: true });
-  $("#filters").addEventListener("click", (event) => {
-    const button = event.target.closest("[data-filter]");
-    if (!button) return;
-    activeFilter = button.dataset.filter;
-    document.querySelectorAll(".filter").forEach((item) => item.classList.toggle("is-active", item === button));
-    renderLibrary();
-  });
-  window.addEventListener("popstate", () => {
-    const slug = new URLSearchParams(location.search).get("game");
-    if (slug) openDetail(slug, false); else closeDetail(false);
-  });
-
-  renderLibrary();
-  renderNews();
-  $("#year").textContent = new Date().getFullYear();
-  const initialSlug = new URLSearchParams(location.search).get("game");
-  if (initialSlug) openDetail(initialSlug, false);
-  requestAnimationFrame(() => $("#page-loader").classList.add("is-done"));
+  window.addEventListener("popstate", syncTranslationFromLocation);
+  if ("serviceWorker" in navigator && (location.protocol === "https:" || location.hostname === "localhost")) {
+    window.addEventListener("load", () => navigator.serviceWorker.register("./sw.js").catch(() => {}), { once: true });
+  }
+  Promise.all([loadPublicBootstrap(), restoreSession()]).then(syncTranslationFromLocation);
 })();

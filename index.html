@@ -1,111 +1,556 @@
 <!doctype html>
 <html lang="ar" dir="rtl">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta name="theme-color" content="#090806">
-  <meta name="color-scheme" content="dark">
-  <meta name="description" content="مكتبة ZRo-ZrRo لتعريبات الألعاب العربية المجانية.">
-  <meta name="robots" content="index,follow,max-image-preview:large">
-  <meta property="og:type" content="website">
-  <meta property="og:locale" content="ar_AR">
-  <meta property="og:site_name" content="ZRo-ZrRo">
-  <meta property="og:title" content="تعريبات ZRo-ZrRo">
-  <meta property="og:description" content="تعريبات ألعاب عربية مجانية بتحميل مباشر دون تسجيل.">
-  <meta property="og:url" content="https://zro-zro.github.io/">
-  <meta property="og:image" content="https://zro-zro.github.io/assets/zro-zro-logo.webp">
-  <meta name="twitter:card" content="summary_large_image">
-  <link rel="canonical" href="https://zro-zro.github.io/">
-  <link rel="icon" href="favicon.svg" type="image/svg+xml">
-  <link rel="manifest" href="site.webmanifest">
-  <link rel="preload" href="assets/zro-zro-logo.webp" as="image" type="image/webp">
-  <link rel="stylesheet" href="styles.css?v=1">
-  <script src="data.js?v=1" defer></script>
-  <script src="app.js?v=1" defer></script>
-  <title>تعريبات ZRo-ZrRo</title>
-</head>
-<body>
-  <div class="page-loader" id="page-loader" aria-hidden="true"><span></span></div>
-
-  <header class="site-header">
-    <div class="shell header-inner">
-      <a class="brand" href="#top" aria-label="تعريبات ZRo-ZrRo">
-        <img src="assets/zro-zro-logo.webp" width="48" height="48" alt="">
-        <span>تعريبات <b>ZRo-ZrRo</b></span>
-      </a>
-      <nav class="main-nav" aria-label="التنقل الرئيسي">
-        <a href="#library">المكتبة</a>
-        <a href="#news">الأخبار</a>
-        <a class="discord-link" href="https://discord.gg/CCKuTjFgnM" target="_blank" rel="noopener noreferrer">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19.5 5.3A17 17 0 0 0 15.4 4l-.5 1a15 15 0 0 0-5.8 0l-.5-1a17 17 0 0 0-4.1 1.3C1.9 9.1 1.2 12.8 1.5 16.4a16 16 0 0 0 5 2.6l1.2-1.7a10 10 0 0 1-1.8-.9l.5-.4c3.5 1.6 7.4 1.6 11 0l.6.4a12 12 0 0 1-1.9.9l1.2 1.7a16 16 0 0 0 5-2.6c.4-4.2-.7-7.9-2.8-11.1ZM8.6 14.3c-1.1 0-2-1-2-2.3s.9-2.3 2-2.3 2 1 2 2.3-.9 2.3-2 2.3Zm6.8 0c-1.1 0-2-1-2-2.3s.9-2.3 2-2.3 2 1 2 2.3-.9 2.3-2 2.3Z"/></svg>
-          <span>مجتمع Discord</span>
-        </a>
-      </nav>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="مكتبة تعريبات ZRo-ZrRo العربية." />
+    <meta name="robots" content="index,follow,max-image-preview:large" />
+    <meta name="theme-color" content="#09090b" />
+    <meta name="referrer" content="no-referrer" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob: https://zro-zrro-memberships.zx87s.chatgpt.site; media-src 'self' blob:; connect-src 'self' https://zro-zrro-memberships.zx87s.chatgpt.site; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; upgrade-insecure-requests" />
+    <title>تعريبات ZRo-ZrRo</title>
+    <link rel="canonical" href="https://zro-zro.github.io/" />
+    <link rel="sitemap" type="application/xml" href="https://zro-zro.github.io/sitemap.xml" />
+    <meta property="og:locale" content="ar_AR" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="تعريبات ZRo-ZrRo" />
+    <meta property="og:title" content="تعريبات ZRo-ZrRo" />
+    <meta property="og:description" content="مكتبة تعريبات الألعاب العربية من ZRo-ZrRo." />
+    <meta property="og:url" content="https://zro-zro.github.io/" />
+    <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
+    <link rel="preconnect" href="https://zro-zrro-memberships.zx87s.chatgpt.site" crossorigin />
+    <link rel="preload" href="https://zro-zrro-memberships.zx87s.chatgpt.site/api/bootstrap" as="fetch" crossorigin />
+    <link rel="stylesheet" href="./styles.css?v=37" />
+    <script src="./app.js?v=37" defer></script>
+  </head>
+  <body>
+    <div class="page-loading" id="page-loading" role="status" aria-live="polite" hidden>
+      <span class="page-loading-bar" aria-hidden="true"></span>
+      <span class="page-loading-label"><i aria-hidden="true"></i><b id="page-loading-label">جارٍ التحميل…</b></span>
     </div>
-  </header>
-
-  <main id="top">
-    <section class="library-section" id="library">
-      <div class="shell">
-        <div class="section-heading">
-          <div><p class="eyebrow">ZRo-ZrRo</p><h1>مكتبة التعريبات</h1></div>
-          <span class="library-count" id="library-count">٠ تعريب</span>
+    <header class="site-header">
+      <div class="shell header-inner">
+        <a class="brand" href="#top"><img src="./zro-zro-logo.webp" alt="" width="44" height="44" /><span>تعريبات</span><strong>ZRo-ZrRo</strong></a>
+        <nav class="main-nav" aria-label="التنقل الرئيسي">
+          <a href="#news">الأخبار</a>
+          <a href="#library">المكتبة</a>
+          <a href="#help">المساعدة</a>
+          <button class="nav-action" id="translation-request-button" type="button">طلبات التعريب</button>
+          <a class="discord-link" href="https://discord.gg/CCKuTjFgnM" target="_blank" rel="noopener noreferrer">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19.5 5.3A17 17 0 0 0 15.4 4l-.5 1a15 15 0 0 0-5.8 0l-.5-1a17 17 0 0 0-4.1 1.3C1.9 9.1 1.2 12.8 1.5 16.4a16 16 0 0 0 5 2.6l1.2-1.7a10 10 0 0 1-1.8-.9l.5-.4c3.5 1.6 7.4 1.6 11 0l.6.4a12 12 0 0 1-1.9.9l1.2 1.7a16 16 0 0 0 5-2.6c.4-4.2-.7-7.9-2.8-11.1ZM8.6 14.3c-1.1 0-2-1-2-2.3s.9-2.3 2-2.3 2 1 2 2.3-.9 2.3-2 2.3Zm6.8 0c-1.1 0-2-1-2-2.3s.9-2.3 2-2.3 2 1 2 2.3-.9 2.3-2 2.3Z"/></svg>
+            <span>مجتمع</span>
+          </a>
+        </nav>
+        <div class="header-actions">
+          <span class="online-counter" id="online-counter" title="المستخدمون المتصلون الآن" hidden><i></i><b id="online-count">0</b><span>متصل</span></span>
+          <button class="button ghost header-badge-button" id="admin-button" type="button" hidden>
+            <span id="admin-button-label">الإدارة</span>
+            <span class="notification-badge" id="admin-badge" hidden>0</span>
+          </button>
+          <button class="support-button" id="support-button" type="button" aria-label="الدعم الفني" title="الدعم الفني" hidden>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 13a8 8 0 0 1 16 0"/><path d="M4 13v5a2 2 0 0 0 2 2h2v-7H4Zm16 0v5a2 2 0 0 1-2 2h-2v-7h4Z"/><path d="M16 20c0 1-1.8 2-4 2"/></svg>
+            <span class="notification-badge" id="support-badge" hidden>0</span>
+          </button>
+          <button class="notification-button" id="notification-button" type="button" aria-label="الإشعارات" title="الإشعارات" hidden>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9Z"/><path d="M10 21h4"/></svg>
+            <span class="notification-badge" id="notification-badge" hidden>0</span>
+          </button>
+          <button class="button primary" id="account-button" type="button">دخول</button>
         </div>
+      </div>
+    </header>
 
-        <div class="library-tools">
-          <label class="search-box" for="catalog-search">
+    <main id="top">
+      <section class="library-section" id="library">
+        <div class="shell">
+          <div class="section-heading">
+            <div><p class="eyebrow">تعريبات ZRo-ZrRo</p><h1>مكتبة التعريبات</h1></div>
+            <div class="filter-group" aria-label="تصفية المكتبة">
+              <button class="filter is-active" type="button" data-filter="all">الكل</button>
+              <button class="filter" type="button" data-filter="free">مجاني</button>
+              <button class="filter" type="button" data-filter="vip">VIP</button>
+            </div>
+          </div>
+          <label class="search-box library-search" for="catalog-search">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m21 21-4.4-4.4m2.4-5.1A7.5 7.5 0 1 1 4 11.5a7.5 7.5 0 0 1 15 0Z"/></svg>
-            <input id="catalog-search" type="search" autocomplete="off" enterkeyhint="search" placeholder="ابحث باسم اللعبة…">
+            <input id="catalog-search" type="search" autocomplete="off" enterkeyhint="search" placeholder="ابحث باسم اللعبة…" />
           </label>
-          <div class="filters" id="filters" aria-label="تصفية التعريبات">
-            <button class="filter is-active" type="button" data-filter="all">الكل</button>
-            <button class="filter" type="button" data-filter="featured">المميز</button>
-            <button class="filter" type="button" data-filter="new">الجديد</button>
+          <p class="results-status" id="results-status" role="status"></p>
+          <div class="catalog-grid" id="catalog-grid"></div>
+          <div class="empty-state" id="empty-state" hidden><h3>لا توجد تعريبات</h3></div>
+          <section id="upcoming-section" hidden aria-labelledby="upcoming-title"><h2 id="upcoming-title">التعريبات القادمة</h2><div class="catalog-grid" id="upcoming-grid"></div></section>
+        </div>
+      </section>
+      <section class="news-section" id="news">
+        <div class="shell">
+          <div class="section-heading">
+            <div><p class="eyebrow">آخر المستجدات</p><h2>أخبار التعريبات</h2></div>
+          </div>
+          <div class="news-grid" id="news-grid" aria-live="polite"></div>
+        </div>
+      </section>
+      <section class="help-section" id="help" aria-labelledby="help-title">
+        <div class="shell">
+          <div class="section-heading"><div><p class="eyebrow">مركز المساعدة</p><h2 id="help-title">تحتاج مساعدة؟</h2></div></div>
+          <div class="help-grid">
+            <article><span class="help-icon">💬</span><h3>التعليقات</h3><p>أنشئ حسابًا لتكتب تعليقًا أو ترد على أعضاء المجتمع. تصفح التعريبات وتنزيلها المجاني لا يحتاجان إلى حساب.</p><button class="button ghost" type="button" data-open-account>تسجيل الدخول للتعليق</button></article>
+            <article><span class="help-icon">🎧</span><h3>تذكرة خاصة</h3><p>سجّل الدخول ثم افتح تذكرة خاصة مع Owner أو Mod، وأرفق صورة أو فيديو عند الحاجة.</p><button class="button primary" type="button" data-open-support>فتح الدعم الفني</button></article>
+          </div>
+          <div class="role-legend" aria-label="رتب الحسابات"><span class="tier-pill free">● عضو</span><span class="tier-pill vip">★ VIP</span><span class="tier-pill mod">◆ Mod</span><span class="tier-pill owner">♛ Owner</span></div>
+        </div>
+      </section>
+      <section class="hero memberships-section" aria-labelledby="memberships-title" hidden>
+        <div class="shell">
+          <div class="section-heading"><div><p class="eyebrow">العضويات</p><h2 id="memberships-title">اختر عضويتك</h2></div></div>
+          <div class="membership-grid">
+            <article class="membership-free-card">
+              <p class="membership-kicker">للجميع</p>
+              <h3>عضوية مجانية</h3>
+              <p class="membership-price">مجانًا</p>
+              <ul class="membership-features">
+                <li>تنزيل جميع التعريبات المجانية بعد تسجيل الدخول</li>
+                <li>مشاهدة تفاصيل وصور جميع التعريبات</li>
+                <li>التعليق والرد والتفاعل مع المجتمع</li>
+                <li>إرسال طلبات التعريب وتذاكر الدعم الفني</li>
+              </ul>
+              <button class="button ghost wide" id="free-membership-button" type="button">إنشاء حساب مجاني</button>
+            </article>
+            <article class="vip-card" id="vip">
+              <p class="vip-kicker">عضوية VIP</p>
+              <h3>المزيد من التعريبات</h3>
+              <p class="membership-price"><strong>3</strong> دولار <span>/ 30 يومًا</span></p>
+              <ul class="membership-features">
+                <li>جميع مزايا العضوية المجانية</li>
+                <li>تنزيل التعريبات المخصصة لفئة VIP</li>
+                <li>اسم ذهبي وشارة VIP في الحساب والتعليقات</li>
+                <li>تفعيل العضوية بعد مراجعة فاتورة الدعم</li>
+              </ul>
+              <button class="paypal-button" id="vip-support-button" type="button">الدعم عبر PayPal <b>3 USD</b></button>
+              <button class="invoice-shortcut" id="invoice-shortcut" type="button">إرسال رقم فاتورة PayPal</button>
+            </article>
           </div>
         </div>
+      </section>
+    </main>
 
-        <p class="results-status" id="results-status" role="status"></p>
-        <div class="catalog-grid" id="catalog-grid"></div>
-        <div class="empty-state" id="catalog-empty" hidden>
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6.5A2.5 2.5 0 0 1 6.5 4h11A2.5 2.5 0 0 1 20 6.5v11a2.5 2.5 0 0 1-2.5 2.5h-11A2.5 2.5 0 0 1 4 17.5Z"/><path d="M8 9h8M8 13h5"/></svg>
-          <h2>لا توجد تعريبات منشورة حاليًا</h2>
+    <footer>
+      <div class="shell footer-inner">
+        <p>© <span id="year"></span> ZRo-ZrRo</p>
+        <button class="footer-link" id="privacy-button" type="button">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 20 6v6c0 5-3.4 8-8 9-4.6-1-8-4-8-9V6Z"/><path d="m9 12 2 2 4-4"/></svg>
+          <span>سياسة الخصوصية</span>
+        </button>
+      </div>
+    </footer>
+
+    <dialog id="translation-dialog" class="modal detail-modal">
+      <section class="modal-card detail-card">
+        <button class="modal-close" data-close="translation-dialog" aria-label="رجوع">×</button>
+        <div id="translation-detail"></div>
+      </section>
+    </dialog>
+
+    <dialog id="image-dialog" class="image-modal">
+      <button class="modal-close" data-close="image-dialog" aria-label="إغلاق الصورة">×</button>
+      <img id="lightbox-image" alt="" />
+    </dialog>
+
+    <dialog id="auth-dialog" class="modal auth-modal">
+      <section class="modal-card narrow">
+        <button class="modal-close" data-close="auth-dialog" aria-label="إغلاق">×</button>
+        <div class="modal-tabs">
+          <button class="tab is-active" type="button" data-auth-tab="login">تسجيل الدخول</button>
+          <button class="tab" type="button" data-auth-tab="register">حساب جديد</button>
+          <button class="tab" type="button" data-auth-tab="recover">نسيت كلمة المرور</button>
         </div>
-      </div>
-    </section>
+        <form id="login-form" class="form-grid">
+          <label>الاسم أو البريد<input name="identifier" autocomplete="username" required /></label>
+          <label>كلمة المرور<input name="password" type="password" autocomplete="current-password" required /></label>
+          <button class="button primary wide" type="submit">دخول</button>
+          <button class="text-action auth-recover-link" type="button" data-auth-tab-link="recover">نسيت كلمة المرور؟</button>
+        </form>
+        <form id="register-form" class="form-grid" hidden>
+          <label>اسم المستخدم<input name="username" autocomplete="username" minlength="3" maxlength="30" required /></label>
+          <label>البريد الإلكتروني<input name="email" type="email" autocomplete="email" required /></label>
+          <label>كلمة المرور<input name="password" type="password" autocomplete="new-password" minlength="10" maxlength="128" required /></label>
+          <button class="button primary wide" type="submit">إنشاء الحساب</button>
+        </form>
+        <form id="recover-form" class="form-grid" hidden>
+          <p class="recovery-intro">أدخل رقم الحساب واسم المستخدم ورمز الاسترداد السري الذي حفظته عند إنشاء الحساب.</p>
+          <label>رقم الحساب<input name="accountId" type="number" inputmode="numeric" min="1" placeholder="مثال: 27" required /></label>
+          <label>اسم المستخدم<input name="username" autocomplete="username" minlength="3" maxlength="30" required /></label>
+          <label>رمز الاسترداد<input name="recoveryCode" dir="ltr" autocomplete="off" spellcheck="false" placeholder="ZROZRO-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX" required /></label>
+          <label>كلمة المرور الجديدة<input name="newPassword" type="password" autocomplete="new-password" minlength="10" maxlength="128" required /></label>
+          <button class="button primary wide" type="submit">استرداد الحساب</button>
+          <p class="recovery-help">إذا فقدت الرمز، تواصل مع Owner عبر مجتمع Discord للتحقق من ملكية الحساب ثم تعيين كلمة مرور مؤقتة.</p>
+        </form>
+        <p class="form-message" id="auth-message" role="status"></p>
+      </section>
+    </dialog>
 
-    <section class="news-section" id="news">
-      <div class="shell">
-        <div class="section-heading"><div><p class="eyebrow">آخر المستجدات</p><h2>أخبار التعريبات</h2></div></div>
-        <div class="news-grid" id="news-grid"></div>
-        <div class="empty-state compact" id="news-empty" hidden><h3>لا توجد أخبار منشورة حاليًا</h3></div>
-      </div>
-    </section>
+    <dialog id="recovery-code-dialog" class="modal">
+      <section class="modal-card narrow recovery-code-card" aria-labelledby="recovery-code-title">
+        <h2 id="recovery-code-title">احفظ رمز الاسترداد</h2>
+        <p>هذا الرمز هو وسيلتك الآمنة لاسترداد الحساب دون بريد إلكتروني. سيظهر الآن فقط، ولا تشاركه مع أي شخص.</p>
+        <code id="recovery-code-value" dir="ltr"></code>
+        <div class="recovery-code-actions">
+          <button class="button ghost" id="copy-recovery-code" type="button">نسخ الرمز</button>
+          <button class="button primary" id="confirm-recovery-code" type="button">حفظته في مكان آمن</button>
+        </div>
+      </section>
+    </dialog>
 
-    <section class="community-section">
-      <div class="shell community-card">
-        <img src="assets/zro-zro-logo.webp" width="210" height="210" alt="شعار ZRo-ZrRo" loading="lazy">
-        <div><p class="eyebrow">مجتمع ZRo-ZrRo</p><h2>تابع جديد التعريبات</h2><p>انضم إلى مجتمع Discord لمتابعة الإصدارات والتحديثات.</p></div>
-        <a class="button primary" href="https://discord.gg/CCKuTjFgnM" target="_blank" rel="noopener noreferrer">الانضمام إلى Discord</a>
-      </div>
-    </section>
-  </main>
+    <dialog id="account-dialog" class="modal">
+      <section class="modal-card account-card">
+        <button class="modal-close" data-close="account-dialog" aria-label="إغلاق">×</button>
+        <div class="modal-heading"><div><p class="eyebrow">الحساب</p><h2>حسابي</h2></div><button class="button danger" id="logout-button" type="button">خروج</button></div>
+        <div class="account-summary" id="account-summary"></div>
+        <div id="account-avatar" class="account-avatar"></div>
+        <details class="account-edit">
+          <summary>تعديل الحساب</summary>
+          <form id="account-form" class="form-grid two-columns">
+            <label>اسم المستخدم<input name="username" minlength="3" maxlength="30" required /></label>
+            <label>البريد الإلكتروني<input name="email" type="email" required /></label>
+            <label>كلمة المرور الحالية<input name="currentPassword" type="password" autocomplete="current-password" required /></label>
+            <label>كلمة مرور جديدة<input name="newPassword" type="password" autocomplete="new-password" minlength="10" maxlength="128" /></label>
+            <button class="button primary" type="submit">حفظ</button>
+          </form>
+          <p class="form-message" id="account-message" role="status"></p>
+        </details>
+        <details class="account-edit recovery-settings">
+          <summary>استرداد الحساب</summary>
+          <p class="recovery-status" id="recovery-status"></p>
+          <form id="recovery-code-form" class="form-grid">
+            <label>كلمة المرور الحالية<input name="currentPassword" type="password" autocomplete="current-password" required /></label>
+            <button class="button ghost" type="submit">إنشاء رمز استرداد جديد</button>
+          </form>
+          <p class="form-message" id="recovery-message" role="status"></p>
+        </details>
+        <section class="history-section"><h3>التعريبات المحمّلة</h3><div id="download-history" class="history-list"></div></section>
+        <section class="history-section" hidden><h3>طلبات VIP</h3><div id="account-invoice-history" class="invoice-history"></div></section>
+      </section>
+    </dialog>
 
-  <section class="detail-view" id="detail-view" hidden aria-live="polite">
-    <div class="shell detail-shell">
-      <button class="back-button" id="detail-back" type="button">العودة إلى المكتبة</button>
-      <article id="detail-content"></article>
-    </div>
-  </section>
+    <dialog id="notifications-dialog" class="modal">
+      <section class="modal-card notifications-card">
+        <button class="modal-close" data-close="notifications-dialog" aria-label="إغلاق">×</button>
+        <div class="modal-heading"><div><p class="eyebrow">الحساب</p><h2>الإشعارات</h2></div></div>
+        <div class="notifications-list" id="notifications-list" aria-live="polite"></div>
+      </section>
+    </dialog>
 
-  <div class="lightbox" id="lightbox" hidden role="dialog" aria-modal="true" aria-label="عرض الصورة">
-    <button type="button" id="lightbox-close" aria-label="إغلاق">×</button>
-    <img id="lightbox-image" alt="">
-  </div>
+    <dialog id="support-dialog" class="modal support-modal">
+      <section class="modal-card support-card" aria-labelledby="support-title">
+        <button class="modal-close" data-close="support-dialog" aria-label="إغلاق">×</button>
+        <div class="modal-heading support-heading">
+          <div><p class="eyebrow">محادثة خاصة</p><h2 id="support-title">الدعم الفني</h2><p id="support-subtitle">تذاكرك ومحادثاتك مع فريق الدعم</p></div>
+          <button class="button primary small" id="new-ticket-button" type="button">تذكرة جديدة</button>
+        </div>
+        <div class="support-layout">
+          <aside class="support-ticket-sidebar">
+            <div class="support-ticket-list" id="support-ticket-list"></div>
+          </aside>
+          <div class="support-workspace">
+            <section class="support-empty" id="support-empty"><h3>اختر تذكرة</h3><p>أو أنشئ تذكرة جديدة لبدء المحادثة.</p></section>
+            <section class="support-create" id="support-create" hidden>
+              <div class="support-step"><span>1</span><div><strong>نوع المشكلة</strong><small>اختر المشكلة ثم اكتب تفاصيلها لفتح المحادثة.</small></div></div>
+              <form id="support-ticket-form" class="form-grid">
+                <label>المشكلة
+                  <select name="category" required>
+                    <option value="">اختر نوع المشكلة</option>
+                    <option value="account">الحساب وتسجيل الدخول</option>
+                    <option value="download">تحميل أو تثبيت تعريب</option>
+                    <option value="vip">الحساب أو الصلاحيات</option>
+                    <option value="translation">مشكلة داخل تعريب</option>
+                    <option value="technical">مشكلة تقنية في الموقع</option>
+                    <option value="other">مشكلة أخرى</option>
+                  </select>
+                </label>
+                <label>تفاصيل المشكلة<textarea name="details" rows="6" minlength="10" maxlength="1500" placeholder="اشرح المشكلة بوضوح…" required></textarea></label>
+                <button class="button primary" type="submit">فتح التذكرة وبدء المحادثة</button>
+              </form>
+              <p class="form-message" id="support-create-message" role="status"></p>
+            </section>
+            <section class="support-chat" id="support-chat" hidden>
+              <header class="support-chat-header">
+                <div><p id="support-ticket-category"></p><h3 id="support-ticket-owner"></h3><span id="support-ticket-meta"></span></div>
+                <div class="support-ticket-actions"><button class="button ghost small" id="support-ticket-status" type="button"></button><button class="button danger small" id="support-ticket-delete" type="button">حذف التذكرة</button></div>
+              </header>
+              <div class="support-messages" id="support-messages" aria-live="polite"></div>
+              <form class="support-composer" id="support-message-form">
+                <textarea name="body" rows="2" maxlength="2000" placeholder="اكتب رسالتك…"></textarea>
+                <div class="support-composer-actions">
+                  <label class="support-attachment-button" title="إرفاق صورة أو فيديو">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m21 11-8.8 8.8a6 6 0 0 1-8.5-8.5L13 2a4 4 0 0 1 5.7 5.7l-9.4 9.4a2 2 0 1 1-2.8-2.8L15 5.8"/></svg>
+                    <span>مرفق</span><input name="attachment" type="file" accept="image/jpeg,image/png,image/webp,image/gif,video/mp4,video/webm,video/quicktime" />
+                  </label>
+                  <span class="support-file-name" id="support-file-name">الصور حتى 5MB، الفيديو حتى 25MB</span>
+                  <button class="button primary" type="submit">إرسال</button>
+                </div>
+                <div class="support-upload-progress" id="support-upload-progress" hidden><span></span><b>0%</b></div>
+              </form>
+              <p class="form-message" id="support-message-status" role="status"></p>
+            </section>
+          </div>
+        </div>
+      </section>
+    </dialog>
 
-  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+    <dialog id="translation-request-dialog" class="modal">
+      <section class="modal-card request-card" aria-labelledby="translation-request-title">
+        <button class="modal-close" data-close="translation-request-dialog" aria-label="إغلاق">×</button>
+        <div class="modal-heading"><div><p class="eyebrow">شارك اقتراحك</p><h2 id="translation-request-title">طلبات التعريب</h2></div></div>
+        <form id="translation-request-form" class="form-grid">
+          <label>اسم اللعبة<input name="gameName" maxlength="120" required /></label>
+          <label>لماذا تستحق هذه اللعبة التعريب؟<textarea name="reason" rows="5" minlength="15" maxlength="1500" required></textarea></label>
+          <label class="file-field">صورة اللعبة من جهازك<span class="file-picker"><span data-file-label="requestImage">لم تُحدد صورة</span><span class="file-button">اختيار صورة</span><input name="requestImage" type="file" accept="image/jpeg,image/png,image/webp,image/gif" required /></span></label>
+          <button class="button primary" type="submit">إرسال الطلب</button>
+        </form>
+        <p class="form-message" id="translation-request-message" role="status"></p>
+        <section class="request-history-section"><h3>طلباتي</h3><div id="translation-request-history" class="request-history"></div></section>
+      </section>
+    </dialog>
 
-  <footer class="site-footer">
-    <div class="shell footer-inner"><span>تعريبات <b>ZRo-ZrRo</b></span><span>© <span id="year"></span></span></div>
-  </footer>
-</body>
+    <dialog id="admin-dialog" class="modal admin-modal">
+      <section class="modal-card admin-card">
+        <button class="modal-close" data-close="admin-dialog" aria-label="إغلاق">×</button>
+        <div class="modal-heading admin-main-heading">
+          <div><p class="eyebrow">لوحة Owner</p><h2>مركز الإدارة</h2><p class="admin-subtitle">خمس بوابات واضحة لإدارة الموقع دون ازدحام</p></div>
+          <span class="owner-mark">Owner</span>
+        </div>
+        <div class="admin-overview" id="admin-overview"></div>
+        <div class="admin-tabs">
+          <button class="tab is-active" type="button" data-admin-tab="translations"><b>1</b> التعريبات</button>
+          <button class="tab" type="button" data-admin-tab="news"><b>2</b> الأخبار</button>
+          <button class="tab" type="button" data-admin-tab="users"><b>3</b> المستخدمون</button>
+          <button class="tab" type="button" data-admin-tab="requests"><b>4</b> الطلبات والبلاغات</button>
+          <button class="tab" type="button" data-admin-tab="interface"><b>5</b> الإعدادات والسجل</button>
+        </div>
+        <section id="admin-translations-panel">
+          <div class="admin-editor-layout">
+          <form id="translation-form" class="translation-form admin-editor-form">
+            <div class="editor-form-heading span-2"><div><span>محرر التعريب</span><h3 id="translation-editor-title">إضافة تعريب جديد</h3></div><small>تظهر المعاينة مباشرة قبل الحفظ</small></div>
+            <input name="id" type="hidden" />
+            <label>اسم التعريب<input name="title" maxlength="120" required /></label>
+            <label>المعرّف المختصر<input name="slug" maxlength="80" dir="ltr" placeholder="يُنشأ تلقائيًا" /></label>
+            <label class="span-2">الوصف<textarea name="description" rows="3" maxlength="2000"></textarea></label>
+            <label>الفئة<select name="access" required><option value="free">مجاني</option><option value="vip">VIP</option></select></label>
+            <label>نوع اللعبة<input name="genre" maxlength="50" placeholder="مثال: رعب، مغامرات، أكشن" /></label>
+            <label>سنة إصدار اللعبة<input name="releaseYear" type="number" min="1970" max="2100" /></label>
+            <label>حالة التعريب<select name="projectStatus"><option value="released">متاح</option><option value="planned">مخطط له</option><option value="translating">قيد التعريب</option><option value="testing">قيد الاختبار</option></select></label>
+            <label>نسبة الإنجاز<input name="progress" type="number" min="0" max="100" value="100" required /></label>
+            <label class="check-label"><input name="earlyAccess" type="checkbox" /> وصول مبكر لأعضاء VIP</label>
+            <label>موعد الإتاحة المجانية (اختياري)<input name="freeAt" type="datetime-local" /><small>إن تُرك فارغًا، يبقى الوصول المبكر مخصصًا لـVIP.</small></label>
+            <label id="download-url-field">رابط التنزيل للتعريب المجاني (اختياري عند رفع ملف)<input name="downloadUrl" type="url" inputmode="url" dir="ltr" /></label>
+            <label id="download-file-field" class="file-field">ملف التعريب من الجهاز (حتى 512MB)<span class="file-picker"><span data-file-label="downloadFile">لم يُحدد ملف</span><span class="file-button">اختيار ملف</span><input name="downloadFile" type="file" /></span><span class="field-note" id="download-file-note">المجاني يقبل رابطًا أو ملفًا، وVIP يتطلب ملفًا محميًا.</span></label>
+            <label class="file-field">صورة الغلاف<span class="file-picker"><span data-file-label="cover">لم تُحدد صورة</span><span class="file-button">اختيار صورة</span><input name="cover" type="file" accept="image/jpeg,image/png,image/webp,image/gif" /></span></label>
+            <label class="file-field">صور داخل اللعبة (حتى 4)<span class="file-picker"><span data-file-label="gallery">لم تُحدد صور</span><span class="file-button">اختيار صور</span><input name="gallery" type="file" accept="image/jpeg,image/png,image/webp,image/gif" multiple /></span></label>
+            <label>تاريخ النشر<input name="publishedAt" type="datetime-local" /></label>
+            <label class="check-label"><input name="isFeatured" type="checkbox" /> تعريب مميز</label>
+            <fieldset class="translation-tags-field span-2">
+              <legend>وسوم التعريب</legend>
+              <label class="check-label"><input name="isNewRelease" type="checkbox" /> جديد</label>
+              <label class="check-label"><input name="hasNewUpdate" type="checkbox" /> تحديث جديد</label>
+              <label class="check-label"><input name="isExperimental" type="checkbox" /> تجريبي</label>
+            </fieldset>
+            <label class="check-label"><input name="isPublished" type="checkbox" checked /> منشور</label>
+            <div class="form-actions span-2"><button class="button primary" type="submit">حفظ التعريب</button><button class="button ghost" id="cancel-edit" type="button" hidden>إلغاء التعديل</button></div>
+          </form>
+          <aside class="editor-preview" aria-labelledby="translation-preview-heading">
+            <div class="editor-preview-heading"><div><span>معاينة مباشرة</span><h3 id="translation-preview-heading">قبل نشر التعريب</h3></div><span class="preview-live"><i></i> مباشر</span></div>
+            <div id="translation-live-preview" class="translation-live-preview"></div>
+            <p class="preview-note">هذه هي هيئة المحتوى قبل ظهوره للأعضاء. الصور والوسوم والفئة تتحدث فورًا.</p>
+          </aside>
+          </div>
+          <p class="form-message" id="translation-message" role="status"></p>
+          <div class="admin-list-toolbar">
+            <label class="admin-search"><span>بحث التعريبات</span><input id="admin-translation-search" type="search" maxlength="120" placeholder="ابحث بالاسم الكامل أو رقم التعريب" autocomplete="off" /></label>
+          </div>
+          <div class="admin-list" id="admin-translations"></div>
+          <div id="admin-translations-pagination"></div>
+        </section>
+        <section id="admin-news-panel" hidden>
+          <div class="admin-editor-layout news-editor-layout">
+          <form id="news-form" class="translation-form news-form admin-editor-form">
+            <div class="editor-form-heading span-2"><div><span>محرر الخبر</span><h3 id="news-editor-title">إضافة خبر جديد</h3></div><small>راجع النص والصورة قبل الإرسال</small></div>
+            <input name="id" type="hidden" />
+            <label class="span-2">عنوان الخبر<input name="title" maxlength="140" required /></label>
+            <label class="span-2">نص الخبر<textarea name="body" rows="5" maxlength="4000" required></textarea></label>
+            <label class="file-field span-2">صورة الخبر<span class="file-picker"><span data-file-label="newsCover">لم تُحدد صورة</span><span class="file-button">اختيار صورة</span><input name="newsCover" type="file" accept="image/jpeg,image/png,image/webp,image/gif" /></span></label>
+            <label class="check-label"><input name="removeCover" type="checkbox" /> إزالة صورة الخبر الحالية</label>
+            <label class="check-label"><input name="isPublished" type="checkbox" checked /> منشور وإرسال إشعار للحسابات</label>
+            <div class="form-actions span-2"><button class="button primary" type="submit">نشر الخبر</button><button class="button ghost" id="cancel-news-edit" type="button" hidden>إلغاء التعديل</button></div>
+          </form>
+          <aside class="editor-preview" aria-labelledby="news-preview-heading">
+            <div class="editor-preview-heading"><div><span>معاينة مباشرة</span><h3 id="news-preview-heading">قبل نشر الخبر</h3></div><span class="preview-live"><i></i> مباشر</span></div>
+            <div id="news-live-preview" class="news-live-preview"></div>
+            <p class="preview-note">يظهر الخبر هنا بالشكل نفسه تقريبًا الذي سيراه الزوار في الرئيسية.</p>
+          </aside>
+          </div>
+          <p class="form-message" id="news-message" role="status"></p>
+          <div class="admin-list-toolbar">
+            <label class="admin-search"><span>بحث الأخبار</span><input id="admin-news-search" type="search" maxlength="140" placeholder="ابحث بعنوان الخبر أو نصه" autocomplete="off" /></label>
+          </div>
+          <div class="admin-list" id="admin-news"></div>
+          <div id="admin-news-pagination"></div>
+        </section>
+        <section id="admin-invoices-panel" hidden>
+          <div class="admin-panel-heading">
+            <div><p class="eyebrow">طلبات العضوية</p><h3>فواتير PayPal</h3></div>
+            <div class="invoice-filters" aria-label="تصفية الفواتير">
+              <button class="filter is-active" type="button" data-invoice-filter="pending">قيد المراجعة</button>
+              <button class="filter" type="button" data-invoice-filter="approved">مقبولة</button>
+              <button class="filter" type="button" data-invoice-filter="rejected">مرفوضة</button>
+              <button class="filter" type="button" data-invoice-filter="all">الكل</button>
+            </div>
+          </div>
+          <div class="admin-list invoice-admin-list" id="admin-invoices"></div>
+        </section>
+        <section id="admin-users-panel" hidden>
+          <div class="admin-panel-heading"><div><p class="eyebrow">إدارة الحسابات</p><h3>المستخدمون</h3></div></div>
+          <div class="admin-list-toolbar">
+            <label class="admin-search"><span>بحث المستخدمين</span><input id="admin-user-search" type="search" maxlength="80" placeholder="ابحث بالاسم أو رقم الحساب #" autocomplete="off" /></label>
+          </div>
+          <div class="admin-list" id="admin-users"></div>
+          <div id="admin-users-pagination"></div>
+        </section>
+        <section id="admin-requests-panel" hidden>
+          <div class="admin-panel-heading"><div><p class="eyebrow">اقتراحات الأعضاء</p><h3>طلبات التعريب</h3></div></div>
+          <div class="admin-list" id="admin-requests"></div>
+        </section>
+        <section id="admin-reports-panel" hidden><h3>بلاغات صور الحسابات</h3><div class="admin-list" id="admin-avatar-reports"></div><h3>بلاغات التعليقات</h3><div class="admin-list" id="admin-reports"></div></section>
+        <section id="admin-audit-panel" hidden>
+          <h3>سجل النشاط</h3>
+          <form id="audit-search-form" class="advanced-filters"><label>الاسم أو رقم الحساب أو التعريب<input id="audit-search" maxlength="80" type="search" /></label><label>النشاط<select id="audit-action"><option value="">الكل</option></select></label><button class="button ghost" type="submit">بحث وتحديث</button></form>
+          <div id="audit-events" class="admin-list" aria-live="polite"></div>
+          <div class="form-actions"><button id="audit-back" class="button ghost" type="button" disabled>السابق</button><button id="audit-next" class="button ghost" type="button" disabled>التالي</button></div>
+        </section>
+        <section id="admin-interface-panel" hidden>
+          <div class="admin-panel-heading">
+            <div><p class="eyebrow">مظهر الموقع</p><h3>تخصيص الواجهة الرئيسية</h3></div>
+          </div>
+          <form id="interface-form" class="interface-form">
+            <div class="interface-live-preview" aria-label="معاينة مباشرة للأحجام">
+              <span>معاينة مباشرة</span>
+              <h4>التعريب الذي تبحث عنه</h4>
+              <h5>التعريبات</h5>
+              <strong>ReStory: Chill Electronics Repairs</strong>
+              <p>نموذج للنصوص العامة في الصفحة الرئيسية.</p>
+            </div>
+            <div class="interface-scale-grid">
+              <label class="interface-range"><span>العنوان الرئيسي <output data-scale-output="heroTitleScale">100%</output></span><input name="heroTitleScale" type="range" min="70" max="150" step="5" value="100" /></label>
+              <label class="interface-range"><span>عناوين الأقسام <output data-scale-output="sectionTitleScale">100%</output></span><input name="sectionTitleScale" type="range" min="70" max="150" step="5" value="100" /></label>
+              <label class="interface-range"><span>أسماء التعريبات <output data-scale-output="cardTitleScale">100%</output></span><input name="cardTitleScale" type="range" min="65" max="150" step="5" value="100" /></label>
+              <label class="interface-range"><span>النصوص العامة <output data-scale-output="bodyTextScale">100%</output></span><input name="bodyTextScale" type="range" min="75" max="135" step="5" value="100" /></label>
+            </div>
+            <fieldset class="interface-order-card">
+              <legend>ترتيب أقسام الصفحة</legend>
+              <p>استخدم الأسهم لتغيير ترتيب الأقسام من الأعلى إلى الأسفل.</p>
+              <div class="interface-order-list" id="interface-order-list"></div>
+            </fieldset>
+            <div class="interface-visibility">
+              <label class="check-label"><input name="showNews" type="checkbox" checked /> إظهار قسم الأخبار</label>
+              <label class="check-label"><input name="showVip" type="checkbox" checked /> إظهار بطاقة VIP</label>
+            </div>
+            <div class="form-actions">
+              <button class="button primary" type="submit">حفظ التخصيص</button>
+              <button class="button ghost" id="reset-interface" type="button">استعادة الإعدادات الافتراضية</button>
+            </div>
+          </form>
+          <p class="form-message" id="interface-message" role="status"></p>
+        </section>
+      </section>
+    </dialog>
+
+    <dialog id="moderation-dialog" class="modal admin-modal">
+      <section class="modal-card moderation-card" aria-labelledby="moderation-title">
+        <button class="modal-close" data-close="moderation-dialog" aria-label="إغلاق">×</button>
+        <div class="modal-heading moderation-heading">
+          <div><p class="eyebrow">صلاحيات Mod</p><h2 id="moderation-title">إدارة البلاغات</h2><p>مراجعة البلاغات وحذف تعليقات الأعضاء المخالفة فقط.</p></div>
+          <span class="mod-mark">Mod</span>
+        </div>
+        <div class="admin-list moderation-reports" id="moderation-reports"></div>
+      </section>
+    </dialog>
+
+    <dialog id="vip-dialog" class="modal" hidden>
+      <section class="modal-card narrow vip-dialog-card" aria-labelledby="vip-dialog-title">
+        <button class="modal-close" data-close="vip-dialog" aria-label="إغلاق">×</button>
+        <span class="crown" aria-hidden="true">♛</span><h2 id="vip-dialog-title">عضوية VIP</h2>
+        <p>تواصل مع فريق الدعم بخصوص صلاحيات الحساب.</p>
+        <div class="vip-account" id="vip-account"></div>
+        <a class="paypal-button" href="#help" hidden>الدعم الفني</a>
+        <form class="invoice-form" id="invoice-form" hidden>
+          <label>رقم الطلب<input name="invoiceNumber" dir="ltr" autocomplete="off" minlength="6" maxlength="80" required /></label>
+          <button class="button primary wide" type="submit">إرسال للمراجعة</button>
+        </form>
+        <p class="form-message" id="invoice-message" role="status"></p>
+        <div class="vip-invoice-section"><h3>طلباتك</h3><div class="invoice-history" id="vip-invoice-history"></div></div>
+      </section>
+    </dialog>
+
+    <dialog id="privacy-dialog" class="modal">
+      <article class="modal-card privacy-card" aria-labelledby="privacy-title">
+        <button class="modal-close" data-close="privacy-dialog" aria-label="إغلاق">×</button>
+        <header class="privacy-heading">
+          <span class="privacy-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="M12 3 20 6v6c0 5-3.4 8-8 9-4.6-1-8-4-8-9V6Z"/><path d="m9 12 2 2 4-4"/></svg>
+          </span>
+          <div><p class="eyebrow">الخصوصية</p><h2 id="privacy-title">سياسة الخصوصية</h2><p class="privacy-updated">آخر تحديث: 30 أغسطس 2026</p></div>
+        </header>
+
+        <div class="privacy-content">
+          <p>نحترم خصوصيتك في تعريبات ZRo-ZrRo، ونريد أن يكون واضحًا لك ما الذي نحفظه ولماذا. تشرح هذه السياسة طريقة التعامل مع بياناتك عند إنشاء حساب أو تنزيل تعريب أو المشاركة في التعليقات.</p>
+
+          <section>
+            <h3>البيانات التي نجمعها</h3>
+            <p>عند إنشاء حساب نطلب اسم المستخدم والبريد الإلكتروني وكلمة المرور. لا تُحفظ كلمة المرور بصورتها الأصلية، بل تُخزن كقيمة تحقق أحادية الاتجاه مع قيمة عشوائية خاصة بها. ونحفظ أيضًا رقم الحساب، فئة العضوية، تاريخ إنشاء الحساب والجلسات النشطة.</p>
+            <p>عند استخدام الموقع قد نسجل التعريبات التي نزلتها، والتعليقات والردود والقلوب والبلاغات التي أرسلتها، وحالة قراءة الإشعارات، وطلبات التعريب وصور الألعاب المرفوعة معها. ولحساب الزوار المتصلين في اللحظة الحالية ننشئ معرّف زيارة عشوائيًا في المتصفح ونحفظ وقت نشاطه لمدة محدودة؛ يظهر إلى Owner العدد الإجمالي فقط دون أسماء الزوار أو عناوينهم. ولحماية الحسابات من المحاولات المتكررة نستخدم معرّفًا تقنيًا مجزأً مشتقًا من عنوان الشبكة وبيانات محاولة الدخول، ولا نستخدمه للإعلانات.</p>
+          </section>
+
+          <section>
+            <h3>كيف نستخدم البيانات</h3>
+            <p>نستخدم هذه البيانات لتشغيل الحساب وتسجيل الدخول، وتحديد صلاحية VIP، وحفظ سجل التنزيلات، وإظهار الردود والإشعارات، ومراجعة البلاغات، ومنع إساءة الاستخدام، وإصلاح المشكلات التي تؤثر في عمل الموقع.</p>
+          </section>
+
+          <section>
+            <h3>ما يظهر للآخرين</h3>
+            <p>عندما تكتب تعليقًا أو ردًا يظهر اسم المستخدم وفئة الحساب بجانب النص. لا يظهر بريدك الإلكتروني أو كلمة المرور أو سجل تنزيلاتك للزوار. وقد يحذف صاحب التعليق تعليقه، ويستطيع Owner حذف المحتوى المخالف ومراجعة البلاغات. ويستطيع Mod مراجعة البلاغات وحذف تعليقات الأعضاء، لكنه لا يستطيع حذف تعليق Owner أو Mod آخر.</p>
+          </section>
+
+          <section>
+            <h3>الدعم الفني والمرفقات</h3>
+            <p>تذاكر الدعم ورسائلها خاصة، ولا يستطيع الاطلاع عليها إلا صاحب التذكرة وOwner أو أعضاء Mod المخولون بالدعم. نعرض داخل التذكرة اسم المستخدم ورقم الحساب لتحديد صاحبه. تُحفظ الصور ومقاطع الفيديو المرفقة في تخزين خاص، ولا تُفتح إلا بعد التحقق من صلاحية الحساب. تنتهي صلاحية المرفقات بعد سبعة أيام، كما تُحذف الرسائل والمرفقات نهائيًا عند حذف التذكرة.</p>
+          </section>
+
+          <section>
+            <h3>الجلسات وحماية الحساب</h3>
+            <p>يحتفظ المتصفح برمز جلسة لتبقى مسجلًا للدخول، بينما تُحفظ في الخادم نسخة مجزأة منه فقط. يمنحك الموقع رمز استرداد عالي العشوائية يظهر لك مرة واحدة، ويُحفظ في الخادم كقيمة تحقق غير قابلة للقراءة. عند استخدامه لتغيير كلمة المرور يُلغى الرمز وكل الجلسات القديمة فورًا. يعمل الموقع عبر اتصال HTTPS ويطبق ضوابط للصلاحيات والطلبات ومعدل محاولات الدخول. ومع ذلك لا توجد خدمة عبر الإنترنت يمكن ضمان حمايتها بنسبة 100%، لذلك ننصح باستخدام كلمة مرور قوية ومختلفة وحفظ رمز الاسترداد دون مشاركته مع أي شخص.</p>
+          </section>
+
+          <section>
+            <h3>الخدمات الخارجية</h3>
+            <p>قد تفتح بعض روابط التنزيل أو المجتمع خدمات خارجية مثل Google Drive وMediaFire وDiscord، وتخضع زيارتك لها لسياسات تلك الخدمات.</p>
+          </section>
+
+          <section>
+            <h3>مشاركة البيانات والاحتفاظ بها</h3>
+            <p>لا نبيع بياناتك ولا نشاركها لأغراض إعلانية. قد تعالجها خدمات الاستضافة وقاعدة البيانات وتخزين الملفات والحماية بالقدر اللازم لتشغيل الموقع، أو نكشف القدر المطلوب إذا ألزمنا القانون بذلك. نحتفظ ببيانات الحساب ما دام الحساب قائمًا، وبسجلات الأمان للمدة اللازمة للحماية، وقد نحتفظ ببعض السجلات عند الحاجة لمنع الاحتيال أو تنفيذ التزام قانوني.</p>
+          </section>
+
+          <section>
+            <h3>اختياراتك</h3>
+            <p>يمكنك تعديل اسم المستخدم والبريد وكلمة المرور من قسم «حسابي»، وحذف تعليقاتك من صفحة التعريب. لطلب نسخة من بياناتك أو تصحيحها أو حذف حسابك، تواصل مع Owner عبر <a href="https://discord.gg/CCKuTjFgnM" target="_blank" rel="noopener noreferrer">مجتمع ZRo-ZrRo على Discord</a>. قد نطلب التحقق من ملكية الحساب قبل تنفيذ الطلب.</p>
+          </section>
+
+          <section>
+            <h3>حسابات القاصرين والتغييرات</h3>
+            <p>الموقع غير موجه عمدًا إلى الأطفال دون السن المسموح به لإنشاء حساب مستقل في بلدهم. إذا كنت ولي أمر وتعتقد أن طفلًا زودنا ببياناته، فتواصل معنا لمراجعتها. قد نحدّث هذه السياسة عند إضافة ميزة جديدة أو تغير طريقة تشغيل الموقع، وسنغيّر تاريخ التحديث الظاهر في أعلى الصفحة.</p>
+          </section>
+        </div>
+      </article>
+    </dialog>
+
+    <div class="toast" id="toast" role="status" hidden></div>
+  </body>
 </html>
