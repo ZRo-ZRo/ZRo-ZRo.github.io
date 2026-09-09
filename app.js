@@ -1684,7 +1684,7 @@
       state.activeTranslation = result.translation;
       state.comments = Array.isArray(result.comments) ? result.comments : [];
       state.commentsLoading = false;
-      document.title = `${state.activeTranslation.title} | تعريبات ZRo-ZrRo`;
+      document.title = `${state.activeTranslation.title} | تعريبات ZRo-ZRo`;
       renderTranslationDetail();
       recordTranslationView(state.activeTranslation.id).catch(() => {});
     } catch (error) {
@@ -4127,7 +4127,7 @@
     state.activeTranslationReference = null;
     state.comments = [];
     state.replyingTo = null;
-    document.title = "تعريبات ZRo-ZrRo";
+    document.title = "تعريبات ZRo-ZRo";
     clearTranslationRoute();
   });
   $("#image-dialog").addEventListener("close", () => {

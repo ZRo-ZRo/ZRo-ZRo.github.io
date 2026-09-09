@@ -805,7 +805,7 @@ footer { border-top: 1px solid var(--line); color: #71717a; }
   .support-file-name { order: 3; width: 100%; flex-basis: 100%; }
 }
 
-/* ZRo-ZrRo identity */
+/* ZRo-ZRo identity */
 body { background: radial-gradient(circle at 50% -20%,rgba(180,126,24,.13),transparent 34%),#070707; }
 .site-header { border-bottom-color: rgba(184,134,32,.5); background: rgba(7,7,7,.92); }
 .brand { align-items: center; }
@@ -815,18 +815,12 @@ body { background: radial-gradient(circle at 50% -20%,rgba(180,126,24,.13),trans
 .button.primary:hover { background: linear-gradient(135deg,#bd841d,#edc460); }
 .support-button:hover, .notification-button:hover { border-color: rgba(214,169,66,.68); color: #f1ce78; }
 .news-section { background: linear-gradient(180deg,rgba(151,105,19,.1),transparent); }
-.help-section { border-bottom: 1px solid rgba(184,134,32,.22); padding-block: 64px; background: linear-gradient(180deg,#0b0a08,#070707); }
-.help-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 18px; }
-.help-grid article { border: 1px solid rgba(184,134,32,.25); border-radius: 20px; padding: 24px; background: linear-gradient(145deg,rgba(184,134,32,.08),rgba(17,17,17,.94)); }
-.help-grid h3 { margin: 8px 0 4px; color: #f1d48e; }
-.help-grid p { margin: 0 0 18px; color: var(--muted); }
-.help-icon { display: grid; width: 42px; height: 42px; place-items: center; border: 1px solid rgba(214,169,66,.35); border-radius: 12px; background: rgba(214,169,66,.08); font-size: 1.25rem; }
 .role-legend { display: flex; flex-wrap: wrap; gap: 9px; margin-block-start: 22px; }
 .admin-tabs { position: sticky; z-index: 3; top: -28px; display: grid; grid-template-columns: repeat(5,minmax(0,1fr)); margin-block: 16px 22px; background: rgba(16,16,19,.96); backdrop-filter: blur(14px); }
 .admin-tabs .tab { min-width: 0; padding: 10px 8px; white-space: nowrap; }
 .admin-tabs .tab b { display: inline-grid; width: 22px; height: 22px; place-items: center; margin-inline-end: 5px; border-radius: 7px; background: rgba(214,169,66,.12); color: #e0b653; }
 .admin-tabs .tab.is-active { border-color: rgba(214,169,66,.45); background: rgba(214,169,66,.12); color: #f4d485; }
-@media (max-width: 760px) { .help-grid { grid-template-columns: 1fr; } .admin-tabs { grid-template-columns: 1fr 1fr; position: static; } .admin-tabs .tab:last-child { grid-column: 1 / -1; } }
+@media (max-width: 760px) { .admin-tabs { grid-template-columns: 1fr 1fr; position: static; } .admin-tabs .tab:last-child { grid-column: 1 / -1; } }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; transition: none !important; }
